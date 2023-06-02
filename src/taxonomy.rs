@@ -1,7 +1,13 @@
 //! CSL constants that describe entries, terms, and variables.
 
+use std::num::IntErrorKind;
+use std::{fmt, str::FromStr};
+
+use serde::{de, Deserialize, Deserializer};
+
 /// A CSL variable.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(untagged)]
 pub enum Variable {
     /// The set of variables with no other attributes.
     Standard(StandardVariable),
@@ -14,7 +20,8 @@ pub enum Variable {
 }
 
 /// The set of variables with no other attributes.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum StandardVariable {
     /// Abstract of the item (e.g. the abstract of a journal article).
     Abstract,
@@ -25,8 +32,10 @@ pub enum StandardVariable {
     /// Archive storing the item.
     Archive,
     /// Collection the item is part of within an archive.
+    #[serde(rename = "archive-collection")]
     ArchiveCollection,
     /// Storage location within an archive (e.g. a box and folder number).
+    #[serde(rename = "archive-location")]
     ArchiveLocation,
     /// Geographic location of the archive.
     ArchivePlace,
@@ -63,6 +72,7 @@ pub enum StandardVariable {
     /// Minor subdivision of a court with a jurisdiction for a legal item.
     Division,
     /// Digital Object Identifier (e.g. “10.1128/AEM.02591-07”).
+    #[serde(rename = "DOI")]
     DOI,
     /// Deprecated legacy variant of event-title.
     Event,
@@ -78,8 +88,10 @@ pub enum StandardVariable {
     /// adventure movie).
     Genre,
     /// International Standard Book Number (e.g. “978-3-8474-1017-1”).
+    #[serde(rename = "ISBN")]
     ISBN,
     /// International Standard Serial Number.
+    #[serde(rename = "ISSN")]
     ISSN,
     /// Geographic scope of relevance (e.g. “US” for a US patent; the court
     /// hearing a legal case).
@@ -109,8 +121,10 @@ pub enum StandardVariable {
     /// Title of the specific part of an item being cited.
     PartTitle,
     /// PubMed Central reference number.
+    #[serde(rename = "PMCID")]
     PMCID,
     /// PubMed reference number.
+    #[serde(rename = "PMID")]
     PMID,
     /// Publisher.
     Publisher,
@@ -142,6 +156,7 @@ pub enum StandardVariable {
     /// Uniform Resource Locator (e.g.
     /// “https://aem.asm.org/cgi/content/full/74/9/2766”).
     #[allow(rustdoc::bare_urls)]
+    #[serde(rename = "URL")]
     URL,
     /// Title of the volume of the item or container holding the item; Also use
     /// for titles of periodical special issues, special sections, and the like.
@@ -158,7 +173,8 @@ impl From<StandardVariable> for Variable {
 }
 
 /// Variables that can be formatted as numbers.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum NumberVariable {
     /// Chapter number (e.g. chapter number in a book; track number on an
     /// album).
@@ -231,14 +247,15 @@ impl From<NumberVariable> for Term {
 }
 
 /// Variables that can be formatted as dates.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum DateVariable {
     /// Date the item has been accessed.
     Accessed,
     /// Date the item was initially available (e.g. the online publication date
     /// of a journal article before its formal publication date; the date a
     /// treaty was made available for signing).
-    AvailableFate,
+    AvailableDate,
     /// Date the event related to an item took place.
     EventFate,
     /// Date the item was issued/published.
@@ -256,7 +273,8 @@ impl From<DateVariable> for Variable {
 }
 
 /// Variables that can be formatted as names.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum NameVariable {
     /// Author.
     Author,
@@ -339,7 +357,7 @@ impl From<NameVariable> for Term {
 }
 
 /// Localizable terms.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub enum Term {
     /// Kind of the cited item.
     Kind(Kind),
@@ -399,7 +417,9 @@ impl Term {
 }
 
 /// Kind of the cited item.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+
 pub enum Kind {
     /// A self-contained work made widely available but not published in a
     /// journal or other publication; Use for preprints, working papers, and
@@ -475,6 +495,7 @@ pub enum Kind {
     /// interview; author is interpreted as the interviewee.
     Interview,
     /// A legal case.
+    #[serde(rename = "legal_case")]
     LegalCase,
     /// A law or resolution enacted by a governing body.
     Legislation,
@@ -487,10 +508,12 @@ pub enum Kind {
     /// A video or visual recording; If a container-title is present, the item
     /// is interpreted as a part contained within a larger compilation of
     /// recordings (e.g. a part of a multipart documentary)).
+    #[serde(rename = "motion_picture")]
     MotionPicture,
     /// The printed score for a piece of music; For a live performance of the
     /// music, use performance; For recordings of the music, use song (for audio
     /// recordings) or motionPicture (for video recordings).
+    #[serde(rename = "musical_score")]
     MusicalScore,
     /// A fragment, historical document, or other unusually-published or
     /// ephemeral work (e.g. a sales brochure).
@@ -510,6 +533,7 @@ pub enum Kind {
     /// Personal communications between multiple parties; May be unpublished
     /// (e.g. private correspondence between two researchers) or
     /// collected/published (e.g. a letter published in a collection).
+    #[serde(rename = "personal_communication")]
     PersonalCommunication,
     /// A post on a online forum, social media platform, or similar platform;
     /// Also used for comments posted to online items.
@@ -567,7 +591,8 @@ impl From<Kind> for Term {
 }
 
 /// A locator.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[allow(missing_docs)]
 pub enum Locator {
     Appendix,
@@ -698,6 +723,177 @@ pub enum OtherTerm {
     TelevisionSeriesEpisode,
     Video,
     WorkingPaper,
+}
+
+impl FromStr for OtherTerm {
+    type Err = TermConversionError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let parse_int = |s: &str| {
+            s.parse::<u8>().map_err(|e| {
+                if matches!(
+                    e.kind(),
+                    IntErrorKind::NegOverflow | IntErrorKind::PosOverflow
+                ) {
+                    TermConversionError::OutOfRange
+                } else {
+                    TermConversionError::Unknown
+                }
+            })
+        };
+
+        let month_prefix = "month-";
+        let season_prefix = "season-";
+        let ordinal_prefix = "ordinal-";
+        let long_ordinal_prefix = "long-ordinal-";
+
+        if value.starts_with(month_prefix) {
+            let month = parse_int(&value[month_prefix.len()..])?;
+
+            return match month {
+                1 => Ok(Self::Month01),
+                2 => Ok(Self::Month02),
+                3 => Ok(Self::Month03),
+                4 => Ok(Self::Month04),
+                5 => Ok(Self::Month05),
+                6 => Ok(Self::Month06),
+                7 => Ok(Self::Month07),
+                8 => Ok(Self::Month08),
+                9 => Ok(Self::Month09),
+                10 => Ok(Self::Month10),
+                11 => Ok(Self::Month11),
+                12 => Ok(Self::Month12),
+                _ => Err(TermConversionError::OutOfRange),
+            };
+        }
+
+        if value.starts_with(season_prefix) {
+            let season = parse_int(&value[season_prefix.len()..])?;
+
+            return match season {
+                1 => Ok(Self::Season01),
+                2 => Ok(Self::Season02),
+                3 => Ok(Self::Season03),
+                4 => Ok(Self::Season04),
+                _ => Err(TermConversionError::OutOfRange),
+            };
+        }
+
+        if value.starts_with(ordinal_prefix) {
+            let ordinal = parse_int(&value[ordinal_prefix.len()..])?;
+
+            if ordinal > 99 {
+                return Err(TermConversionError::OutOfRange);
+            }
+
+            return Ok(Self::OrdinalN(ordinal));
+        }
+
+        if value.starts_with(long_ordinal_prefix) {
+            let ordinal = parse_int(&value[long_ordinal_prefix.len()..])?;
+
+            if ordinal > 10 {
+                return Err(TermConversionError::OutOfRange);
+            }
+
+            return Ok(Self::LongOrdinal(ordinal));
+        }
+
+        match value {
+            "ordinal" => Ok(Self::Ordinal),
+            "open-quote" => Ok(Self::OpenQuote),
+            "close-quote" => Ok(Self::CloseQuote),
+            "open-inner-quote" => Ok(Self::OpenInnerQuote),
+            "close-inner-quote" => Ok(Self::CloseInnerQuote),
+            "page-range-delimiter" => Ok(Self::PageRangeDelimiter),
+            "colon" => Ok(Self::Colon),
+            "comma" => Ok(Self::Comma),
+            "semicolon" => Ok(Self::Semicolon),
+            "accessed" => Ok(Self::Accessed),
+            "ad" => Ok(Self::Ad),
+            "advance-online-publication" => Ok(Self::AdvanceOnlinePublication),
+            "album" => Ok(Self::Album),
+            "and" => Ok(Self::And),
+            "and-others" => Ok(Self::AndOthers),
+            "anonymous" => Ok(Self::Anonymous),
+            "at" => Ok(Self::At),
+            "audio-recording" => Ok(Self::AudioRecording),
+            "available at" | "available-at" => Ok(Self::AvailableAt),
+            "bc" => Ok(Self::Bc),
+            "bce" => Ok(Self::Bce),
+            "by" => Ok(Self::By),
+            "ce" => Ok(Self::Ce),
+            "circa" => Ok(Self::Circa),
+            "cited" => Ok(Self::Cited),
+            "et-al" => Ok(Self::EtAl),
+            "film" => Ok(Self::Film),
+            "forthcoming" => Ok(Self::Forthcoming),
+            "from" => Ok(Self::From),
+            "henceforth" => Ok(Self::Henceforth),
+            "ibid" => Ok(Self::Ibid),
+            "in" => Ok(Self::In),
+            "in press" | "in-press" => Ok(Self::InPress),
+            "internet" => Ok(Self::Internet),
+            "interview" => Ok(Self::Interview),
+            "letter" => Ok(Self::Letter),
+            "loc-cit" => Ok(Self::LocCit),
+            "no date" | "no-date" => Ok(Self::NoDate),
+            "no-place" => Ok(Self::NoPlace),
+            "no-publisher" => Ok(Self::NoPublisher),
+            "on" => Ok(Self::On),
+            "online" => Ok(Self::Online),
+            "op-cit" => Ok(Self::OpCit),
+            "original-work-published" => Ok(Self::OriginalWorkPublished),
+            "personal-communication" => Ok(Self::PersonalCommunication),
+            "podcast" => Ok(Self::Podcast),
+            "podcast-episode" => Ok(Self::PodcastEpisode),
+            "preprint" => Ok(Self::Preprint),
+            "presented at" | "presented-at" => Ok(Self::PresentedAt),
+            "radio-broadcast" => Ok(Self::RadioBroadcast),
+            "radio-series" => Ok(Self::RadioSeries),
+            "radio-series-episode" => Ok(Self::RadioSeriesEpisode),
+            "reference" => Ok(Self::Reference),
+            "retrieved" => Ok(Self::Retrieved),
+            "review-of" => Ok(Self::ReviewOf),
+            "scale" => Ok(Self::Scale),
+            "special-issue" => Ok(Self::SpecialIssue),
+            "special-section" => Ok(Self::SpecialSection),
+            "television-broadcast" => Ok(Self::TelevisionBroadcast),
+            "television-series" => Ok(Self::TelevisionSeries),
+            "television-series-episode" => Ok(Self::TelevisionSeriesEpisode),
+            "video" => Ok(Self::Video),
+            "working-paper" => Ok(Self::WorkingPaper),
+            _ => Err(TermConversionError::Unknown),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for OtherTerm {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        FromStr::from_str(&s).map_err(de::Error::custom)
+    }
+}
+
+/// An error that can occur when converting a string to a term.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum TermConversionError {
+    /// The month, season, ordinal, or long ordinal is out of range.
+    OutOfRange,
+    /// The term is unknown.
+    Unknown,
+}
+
+impl fmt::Display for TermConversionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::OutOfRange => write!(f, "value out of range"),
+            Self::Unknown => write!(f, "unknown term"),
+        }
+    }
 }
 
 impl From<OtherTerm> for Term {
