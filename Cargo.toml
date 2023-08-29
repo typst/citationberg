@@ -1,5 +1,8 @@
-[package]
-name = "citationberg"
+[workspace]
+members = ["crates/*"]
+default-members = ["crates/citationberg"]
+
+[workspace.package]
 version = "0.1.0"
 authors = ["Martin Haug <mhaug@live.de>"]
 license = "MIT OR Apache-2.0"
@@ -9,10 +12,3 @@ readme = "README.md"
 categories = ["database", "parser-implementations", "text-processing"]
 keywords = ["csl", "bibliography", "citation"]
 edition = "2021"
-
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }
-quick-xml = {version="0.28", features = ["serialize"]}
-
-[dev-dependencies]
-serde_path_to_error = "0.1"

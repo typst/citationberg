@@ -1704,7 +1704,7 @@ mod test {
 
     #[test]
     fn test_example() {
-        let file = "tests/art-history.csl";
+        let file = "../../tests/art-history.csl";
         let source = fs::read_to_string(file).unwrap();
         let style_deserializer = &mut Deserializer::from_str(&source);
         let result: Result<IndependentStyle, _> =
