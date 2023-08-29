@@ -3,6 +3,8 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+use std::ops::{Deref, Not};
+
 use serde::Deserialize;
 
 use taxonomy::{
@@ -10,6 +12,57 @@ use taxonomy::{
 };
 
 pub mod taxonomy;
+
+/// A boolean in CSL.
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Boolean(bool);
+
+impl Deref for Boolean {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for Boolean {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
+        let res = String::deserialize(deserializer)?;
+        Ok(Self(res.to_ascii_lowercase() == "true"))
+    }
+}
+
+impl Not for Boolean {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Self(!self.0)
+    }
+}
+
+/// A positive integer in CSL.
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
+pub struct NonNegativeInteger(u32);
+
+impl Deref for NonNegativeInteger {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'de> Deserialize<'de> for NonNegativeInteger {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
+        let res = String::deserialize(deserializer)?;
+        let res = res.trim().parse().map_err(serde::de::Error::custom)?;
+        Ok(Self(res))
+    }
+}
 
 /// A CSL style.
 #[allow(clippy::large_enum_variant)]
@@ -77,9 +130,10 @@ pub struct IndependentStyle {
     /// How the bibliography is displayed.
     pub bibliography: Option<Bibliography>,
     /// Reusable formatting rules.
-    #[serde(rename = "macro")]
+    #[serde(rename = "macro", default)]
     pub macros: Vec<CslMacro>,
     /// Override localized strings.
+    #[serde(default)]
     pub locale: Vec<InlineLocale>,
     /// Whether to use a hyphen when initializing a name.
     ///
@@ -88,7 +142,7 @@ pub struct IndependentStyle {
         rename = "@initialize-with-hyphen",
         default = "IndependentStyle::default_initialize_with_hyphen"
     )]
-    pub initialize_with_hyphen: bool,
+    pub initialize_with_hyphen: Boolean,
     /// Specifies how to reformat page ranges.
     #[serde(rename = "@page-range-format")]
     pub page_range_format: Option<PageRangeFormat>,
@@ -102,8 +156,8 @@ pub struct IndependentStyle {
 
 impl IndependentStyle {
     /// Return the default value for `initialize_with_hyphen`.
-    pub const fn default_initialize_with_hyphen() -> bool {
-        true
+    pub const fn default_initialize_with_hyphen() -> Boolean {
+        Boolean(true)
     }
 }
 
@@ -158,6 +212,7 @@ pub enum DemoteNonDroppingParticle {
 pub struct StyleInfo {
     /// The authors of the style
     #[serde(rename = "author")]
+    #[serde(default)]
     pub authors: Vec<StyleAttribution>,
     /// Contributors to the style
     #[serde(rename = "contributor")]
@@ -202,7 +257,7 @@ pub struct LocalString {
     #[serde(rename = "@xml:lang")]
     pub lang: Option<LocaleCode>,
     /// The string's value.
-    #[serde(rename = "$value")]
+    #[serde(rename = "$value", default)]
     pub value: String,
 }
 
@@ -348,7 +403,7 @@ pub struct Citation {
     ///
     /// Default: `false`
     #[serde(rename = "@disambiguate-add-givenname", default)]
-    pub disambiguate_add_givenname: bool,
+    pub disambiguate_add_givenname: Boolean,
     /// When to expand names that are ambiguous in short form.
     #[serde(rename = "@disambiguate-add-givenname-rule")]
     pub givenname_disambiguation_rule: Option<DisambiguationRule>,
@@ -356,12 +411,12 @@ pub struct Citation {
     ///
     /// Default: `false`
     #[serde(rename = "@disambiguate-add-names", default)]
-    pub disambiguate_add_names: bool,
+    pub disambiguate_add_names: Boolean,
     /// Disambiguate by adding an alphabetical suffix to the year.
     ///
     /// Default: `false`
     #[serde(rename = "@disambiguate-add-year-suffix", default)]
-    pub disambiguate_add_year_suffix: bool,
+    pub disambiguate_add_year_suffix: Boolean,
     /// Group items in cite by name.
     #[serde(rename = "@cite-group-delimiter")]
     pub cite_group_delimiter: Option<String>,
@@ -381,7 +436,7 @@ pub struct Citation {
         rename = "@near-note-distance",
         default = "Citation::default_near_note_distance"
     )]
-    pub near_note_distance: u32,
+    pub near_note_distance: NonNegativeInteger,
     /// Options for the names within.
     #[serde(flatten)]
     pub name_options: InheritableNameOptions,
@@ -409,8 +464,8 @@ impl Citation {
     }
 
     /// Return the default `near_note_distance`.
-    pub const fn default_near_note_distance() -> u32 {
-        5
+    pub const fn default_near_note_distance() -> NonNegativeInteger {
+        NonNegativeInteger(5)
     }
 }
 
@@ -456,7 +511,7 @@ pub struct Bibliography {
     ///
     /// Default: `false`
     #[serde(rename = "@hanging-indent", default)]
-    pub hanging_indent: bool,
+    pub hanging_indent: Boolean,
     /// When set, the second field is aligned.
     #[serde(rename = "@second-field-align")]
     pub second_field_align: Option<SecondFieldAlign>,
@@ -464,7 +519,7 @@ pub struct Bibliography {
     #[serde(rename = "@subsequent-author-substitute")]
     pub subsequent_author_substitute: Option<String>,
     /// How to replace subsequent identical names.
-    #[serde(rename = "@subsequent-author-substitute-rule")]
+    #[serde(rename = "@subsequent-author-substitute-rule", default)]
     pub subsequent_author_substitute_rule: SubsequentAuthorSubstituteRule,
     /// Options for the names within.
     #[serde(flatten)]
@@ -525,14 +580,14 @@ pub enum SortKey {
         /// Override `[InheritedNameOptions::et_al_min]` and
         /// `[InheritedNameOptions::et_al_subsequent_min]` for macros.
         #[serde(rename = "@names-min")]
-        names_min: Option<usize>,
+        names_min: Option<NonNegativeInteger>,
         /// Override `[InheritedNameOptions::et_al_use_first]` and
         /// `[InheritedNameOptions::et_al_subsequent_use_first]` for macros.
         #[serde(rename = "@names-use-first")]
-        names_use_first: Option<usize>,
+        names_use_first: Option<NonNegativeInteger>,
         /// Override `[InheritedNameOptions::et_al_use_last]` for macros.
         #[serde(rename = "@names-use-last")]
-        names_use_last: Option<bool>,
+        names_use_last: Option<Boolean>,
         /// In which direction to sort.
         #[serde(rename = "@sort", default)]
         sort_direction: SortDirection,
@@ -575,12 +630,14 @@ pub struct Layout {
     /// Parts of the rule.
     #[serde(rename = "$value")]
     pub elements: Vec<LayoutRenderingElement>,
+    // TODO: Roll into proc-macro because #[serde(flatten)] doesn't work with
+    // $value fields.
     /// Set the formatting style.
-    #[serde(flatten)]
-    pub formatting: Formatting,
-    /// Add prefix and suffix.
-    #[serde(flatten)]
-    pub affixes: Affixes,
+    // #[serde(flatten)]
+    // pub formatting: Formatting,
+    // /// Add prefix and suffix.
+    // #[serde(flatten)]
+    // pub affixes: Affixes,
     /// Delimit pieces of the output.
     #[serde(rename = "@delimiter")]
     pub delimiter: Option<String>,
@@ -635,12 +692,12 @@ pub struct Text {
     ///
     /// Default: `false`
     #[serde(rename = "@quotes", default)]
-    pub quotes: bool,
+    pub quotes: Boolean,
     /// Remove periods from the output.
     ///
     /// Default: `false`
     #[serde(rename = "@strip-periods", default)]
-    pub strip_periods: bool,
+    pub strip_periods: Boolean,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
@@ -690,6 +747,7 @@ pub struct Date {
     pub parts: Option<DateParts>,
     /// Override the default date parts. Also specifies the order of the parts
     /// if `form` is `None`.
+    #[serde(default)]
     pub date_part: Vec<DatePart>,
     /// Override formatting style.
     #[serde(flatten)]
@@ -751,7 +809,7 @@ pub struct DatePart {
     ///
     /// Default: `false`
     #[serde(rename = "@strip-periods", default)]
-    pub strip_periods: bool,
+    pub strip_periods: Boolean,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
@@ -779,7 +837,7 @@ pub enum DatePartName {
 
 /// Any allowable date part format.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
-#[serde(untagged)]
+#[serde(rename_all = "kebab-case")]
 pub enum DateAnyForm {
     /// “1”
     Numeric,
@@ -890,7 +948,7 @@ pub struct Number {
     #[serde(rename = "@variable")]
     pub variable: NumberVariable,
     /// How the number is formatted.
-    #[serde(rename = "@form")]
+    #[serde(rename = "@form", default)]
     pub form: NumberForm,
     /// Override formatting style.
     #[serde(flatten)]
@@ -961,7 +1019,7 @@ pub struct Name {
     #[serde(rename = "@delimiter")]
     pub delimiter: String,
     /// Which name parts to display for personal names.
-    #[serde(rename = "@form")]
+    #[serde(rename = "@form", default)]
     pub form: NameForm,
     /// Name parts for formatting for the given and family name.
     #[serde(rename = "name-part")]
@@ -1011,26 +1069,26 @@ pub struct InheritableNameOptions {
     pub delimiter_precedes_last: DelimiterBehavior,
     /// Minimum number of names to use et al.
     #[serde(rename = "@et-al-min")]
-    pub et_al_min: Option<usize>,
+    pub et_al_min: Option<NonNegativeInteger>,
     /// Maximum number of names to use before et al.
     #[serde(rename = "@et-al-use-first")]
-    pub et_al_use_first: Option<usize>,
+    pub et_al_use_first: Option<NonNegativeInteger>,
     /// Minimum number of names to use et al. for repeated citations.
     #[serde(rename = "@et-al-subsequent-min")]
-    pub et_al_subsequent_min: Option<usize>,
+    pub et_al_subsequent_min: Option<NonNegativeInteger>,
     /// Maximum number of names to use before et al. for repeated citations.
     #[serde(rename = "@et-al-subsequent-use-first")]
-    pub et_al_subsequent_use_first: Option<usize>,
+    pub et_al_subsequent_use_first: Option<NonNegativeInteger>,
     /// Whether to use the last name in the author list when there are at least
     /// `et_al_min` names.
     #[serde(rename = "@et-al-use-last")]
-    pub et_al_use_last: bool,
+    pub et_al_use_last: Boolean,
     /// Which name parts to display for personal names.
     #[serde(rename = "@name-form")]
     pub name_form: NameForm,
     /// Whether to initialize the first name if `initialize-with` is Some.
     #[serde(rename = "@initialize")]
-    pub initialize: bool,
+    pub initialize: Boolean,
     /// String to initialize the first name with.
     #[serde(rename = "@initialize-with")]
     pub initialize_with: Option<String>,
@@ -1055,9 +1113,9 @@ impl Default for InheritableNameOptions {
             et_al_use_first: None,
             et_al_subsequent_min: None,
             et_al_subsequent_use_first: None,
-            et_al_use_last: false,
+            et_al_use_last: Boolean::default(),
             name_form: NameForm::default(),
-            initialize: false,
+            initialize: Boolean::default(),
             initialize_with: None,
             name_as_sort_order: None,
             sort_separator: ",".to_string(),
@@ -1185,7 +1243,7 @@ pub struct Label {
 pub struct VariablelessLabel {
     /// What variant of label is chosen.
     #[serde(rename = "@form", default)]
-    pub form: LabelForm,
+    pub form: TermForm,
     /// How to pluiralize the label.
     #[serde(rename = "@plural", default)]
     pub plural: LabelPluralize,
@@ -1202,20 +1260,7 @@ pub struct VariablelessLabel {
     ///
     /// Default: `false`
     #[serde(rename = "strip-periods", default)]
-    pub strip_periods: bool,
-}
-
-/// Which variant of a label to use.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum LabelForm {
-    /// “page”
-    #[default]
-    Long,
-    /// “p.”
-    Short,
-    /// “§”/”§§” for `section`
-    Symbol,
+    pub strip_periods: Boolean,
 }
 
 /// How to pluralize a label.
@@ -1238,12 +1283,14 @@ pub struct Group {
     /// The formatting instructions.
     #[serde(rename = "$value")]
     pub children: Vec<LayoutRenderingElement>,
+    // TODO: Roll into proc-macro because #[serde(flatten)] doesn't work with
+    // $value fields.
     /// Override formatting style.
-    #[serde(flatten)]
-    pub formatting: Formatting,
-    /// Add prefix and suffix.
-    #[serde(flatten)]
-    pub affixes: Affixes,
+    // #[serde(flatten)]
+    // pub formatting: Formatting,
+    // /// Add prefix and suffix.
+    // #[serde(flatten)]
+    // pub affixes: Affixes,
     /// Delimit pieces of the output.
     #[serde(rename = "@delimiter")]
     pub delimiter: Option<String>,
@@ -1273,7 +1320,7 @@ pub struct ChooseBranch {
     /// Other than this choose, two elements would result in the same
     /// rendering.
     #[serde(rename = "@disambiguate")]
-    pub disambiguate: Option<bool>,
+    pub disambiguate: Option<Boolean>,
     /// The variable contains numeric data.
     #[serde(rename = "@is-numeric")]
     /// The variable contains an approximate date.
@@ -1296,8 +1343,9 @@ pub struct ChooseBranch {
     pub variable: Option<Vec<Variable>>,
     /// How to handle the set of tests.
     #[serde(rename = "@match")]
+    #[serde(default)]
     pub match_: ChooseMatch,
-    #[serde(rename = "$value")]
+    #[serde(rename = "$value", default)]
     /// The formatting instructions to use if the condition matches.
     pub children: Vec<LayoutRenderingElement>,
 }
@@ -1307,7 +1355,7 @@ impl ChooseBranch {
     /// here.
     pub fn test(&self) -> Option<ChooseTest> {
         if let Some(disambiguate) = self.disambiguate {
-            if !disambiguate {
+            if !*disambiguate {
                 None
             } else {
                 Some(ChooseTest::Disambiguate)
@@ -1393,9 +1441,9 @@ pub struct CslMacro {
     /// The name of the macro.
     #[serde(rename = "@name")]
     pub name: String,
-    /// The formatting instructions.
-    #[serde(rename = "$value")]
-    pub children: Vec<LayoutRenderingElement>,
+    // /// The formatting instructions.
+    // #[serde(rename = "$value")]
+    // pub children: Vec<LayoutRenderingElement>,
 }
 
 /// Root element of a locale file.
@@ -1429,6 +1477,7 @@ pub struct InlineLocale {
     /// The terms used in the locale.
     pub terms: Option<Terms>,
     /// How to format dates in the locale file.
+    #[serde(default)]
     pub date: Vec<DateLocale>,
     /// Style options for the locale.
     pub style_options: Option<LocaleOptions>,
@@ -1461,10 +1510,14 @@ pub struct LocalizedTerm {
     #[serde(rename = "@name")]
     pub name: Term,
     /// The localization.
-    #[serde(rename = "$value")]
-    pub localization: LocalizedTermForm,
+    #[serde(rename = "$text")]
+    localization: Option<String>,
+    /// The singular variant.
+    single: Option<String>,
+    /// The plural variant.
+    multiple: Option<String>,
     /// The variant of this term translation.
-    #[serde(rename = "@form")]
+    #[serde(rename = "@form", default)]
     pub form: TermForm,
     /// Specify the when this ordinal term is used.
     #[serde(rename = "@match")]
@@ -1477,18 +1530,18 @@ pub struct LocalizedTerm {
     pub gender_form: Option<GrammarGender>,
 }
 
-/// A localized term form, with possible singular and plural variants.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub enum LocalizedTermForm {
-    /// A single variant.
-    Single(String),
-    /// A singular and plural variant.
-    Multiple {
-        /// The singular variant.
-        single: String,
-        /// The plural variant.
-        multiple: String,
-    },
+impl LocalizedTerm {
+    /// Get the singular variant of this term translation. Shall be defined for
+    /// valid CSL files.
+    pub fn single(&self) -> Option<&str> {
+        self.single.as_deref().and(self.localization.as_deref())
+    }
+
+    /// Get the plural variant of this term translation. Shall be defined for
+    /// valid CSL files.
+    pub fn multiple(&self) -> Option<&str> {
+        self.multiple.as_deref().and(self.localization.as_deref())
+    }
 }
 
 /// The variant of a term translation.
@@ -1548,8 +1601,8 @@ pub enum GrammarGender {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct DateLocale {
     /// How the localized date should be formatted.
-    #[serde(rename = "form")]
-    pub form: DateForm,
+    #[serde(rename = "@form")]
+    pub form: Option<DateForm>,
     /// Which parts of the localized date should be included.
     #[serde(rename = "@date-parts")]
     pub parts: Option<DateParts>,
@@ -1566,12 +1619,12 @@ pub struct LocaleOptions {
     ///
     /// Default: `false`
     #[serde(rename = "@limit-day-ordinals-to-day-1")]
-    pub limit_day_ordinals_to_day_1: Option<bool>,
+    pub limit_day_ordinals_to_day_1: Option<Boolean>,
     /// Whether to place punctuation inside of quotation marks.
     ///
     /// Default: `false`
     #[serde(rename = "@punctuation-in-quote")]
-    pub punctuation_in_quote: Option<bool>,
+    pub punctuation_in_quote: Option<Boolean>,
 }
 
 /// Formatting properties.
@@ -1646,7 +1699,10 @@ pub enum TextDecoration {
 pub enum VerticalAlign {
     /// No vertical alignment.
     #[default]
+    #[serde(rename = "")]
     None,
+    /// Align on the baseline.
+    Baseline,
     /// Superscript vertical alignment.
     Sup,
     /// Subscript vertical alignment.
@@ -1691,8 +1747,10 @@ pub enum TextCase {
     /// Capitalize All Words.
     CapitalizeAll,
     /// Sentence case. *Deprecated*.
+    #[serde(rename = "sentence")]
     SentenceCase,
     /// Title case. Only applies to English.
+    #[serde(rename = "title")]
     TitleCase,
 }
 
@@ -1704,16 +1762,45 @@ mod test {
 
     #[test]
     fn test_example() {
-        let file = "../../tests/art-history.csl";
-        let source = fs::read_to_string(file).unwrap();
-        let style_deserializer = &mut Deserializer::from_str(&source);
-        let result: Result<IndependentStyle, _> =
-            serde_path_to_error::deserialize(style_deserializer);
-        match result {
-            Ok(_) => panic!("expected a type error"),
-            Err(err) => {
-                dbg!(err);
+        let csl_files = "../../tests/";
+        let mut failures = 0;
+        let mut tests = 0;
+
+        // Read each `.csl` file in the `tests` directory.
+        for entry in fs::read_dir(csl_files).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.extension().unwrap() != "csl" || !entry.file_type().unwrap().is_file()
+            {
+                continue;
             }
+
+            tests += 1;
+
+            let source = fs::read_to_string(&path).unwrap();
+            let style_deserializer = &mut Deserializer::from_str(&source);
+            let result: Result<IndependentStyle, _> =
+                serde_path_to_error::deserialize(style_deserializer);
+            match result {
+                // Ok(_) => println!("✅ {:?} passed", &path),
+                Ok(_) => {}
+                Err(err) => {
+                    println!("❌ {:?} failed: \n\n{:#?}", &path, &err);
+                    failures += 1;
+                }
+            }
+        }
+
+        if failures == 0 {
+            print!("\n🎉")
+        } else {
+            print!("\n😢")
+        }
+
+        println!(" {} out of {} CSL files parsed successfully", tests - failures, tests);
+
+        if failures > 0 {
+            panic!("{} tests failed", failures);
         }
     }
 }

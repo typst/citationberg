@@ -32,10 +32,10 @@ pub enum StandardVariable {
     /// Archive storing the item.
     Archive,
     /// Collection the item is part of within an archive.
-    #[serde(rename = "archive-collection")]
+    #[serde(rename = "archive_collection")]
     ArchiveCollection,
     /// Storage location within an archive (e.g. a box and folder number).
-    #[serde(rename = "archive-location")]
+    #[serde(rename = "archive_location")]
     ArchiveLocation,
     /// Geographic location of the archive.
     ArchivePlace,
@@ -257,11 +257,11 @@ pub enum DateVariable {
     /// treaty was made available for signing).
     AvailableDate,
     /// Date the event related to an item took place.
-    EventFate,
+    EventDate,
     /// Date the item was issued/published.
     Issued,
     /// Issue date of the original version.
-    OriginalFate,
+    OriginalDate,
     /// Date the item (e.g. a manuscript) was submitted for publication.
     Submitted,
 }
@@ -306,6 +306,7 @@ pub enum NameVariable {
     /// Combined editor and translator of a work; The citation processory must
     /// be automatically generate if editor and translator variables are
     /// identical; May also be provided directly in item data.
+    #[serde(rename = "editortranslator")]
     EditorTranslator,
     /// Executive producer (e.g. of a television series).
     ExecutiveProducer,
@@ -358,6 +359,7 @@ impl From<NameVariable> for Term {
 
 /// Localizable terms.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(untagged)]
 pub enum Term {
     /// Kind of the cited item.
     Kind(Kind),
@@ -810,7 +812,7 @@ impl FromStr for OtherTerm {
             "advance-online-publication" => Ok(Self::AdvanceOnlinePublication),
             "album" => Ok(Self::Album),
             "and" => Ok(Self::And),
-            "and-others" => Ok(Self::AndOthers),
+            "and-others" | "and others" => Ok(Self::AndOthers),
             "anonymous" => Ok(Self::Anonymous),
             "at" => Ok(Self::At),
             "audio-recording" => Ok(Self::AudioRecording),
