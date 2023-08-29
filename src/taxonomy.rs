@@ -747,10 +747,8 @@ impl FromStr for OtherTerm {
         let ordinal_prefix = "ordinal-";
         let long_ordinal_prefix = "long-ordinal-";
 
-        if value.starts_with(month_prefix) {
-            let month = parse_int(&value[month_prefix.len()..])?;
-
-            return match month {
+        if let Some(month) = value.strip_prefix(month_prefix) {
+            return match parse_int(month)? {
                 1 => Ok(Self::Month01),
                 2 => Ok(Self::Month02),
                 3 => Ok(Self::Month03),
@@ -767,10 +765,8 @@ impl FromStr for OtherTerm {
             };
         }
 
-        if value.starts_with(season_prefix) {
-            let season = parse_int(&value[season_prefix.len()..])?;
-
-            return match season {
+        if let Some(season) = value.strip_prefix(season_prefix) {
+            return match parse_int(season)? {
                 1 => Ok(Self::Season01),
                 2 => Ok(Self::Season02),
                 3 => Ok(Self::Season03),
@@ -779,8 +775,8 @@ impl FromStr for OtherTerm {
             };
         }
 
-        if value.starts_with(ordinal_prefix) {
-            let ordinal = parse_int(&value[ordinal_prefix.len()..])?;
+        if let Some(ordinal) = value.strip_prefix(ordinal_prefix) {
+            let ordinal = parse_int(ordinal)?;
 
             if ordinal > 99 {
                 return Err(TermConversionError::OutOfRange);
@@ -789,8 +785,8 @@ impl FromStr for OtherTerm {
             return Ok(Self::OrdinalN(ordinal));
         }
 
-        if value.starts_with(long_ordinal_prefix) {
-            let ordinal = parse_int(&value[long_ordinal_prefix.len()..])?;
+        if let Some(long_ordinal) = value.strip_prefix(long_ordinal_prefix) {
+            let ordinal = parse_int(long_ordinal)?;
 
             if ordinal > 10 {
                 return Err(TermConversionError::OutOfRange);
