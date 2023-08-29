@@ -118,7 +118,7 @@ pub enum StyleClass {
     /// Citations are inlined in the text.
     InText,
     /// Citations are displayed in foot- or endnotes.
-    Notes,
+    Note,
 }
 
 /// How to reformat page ranges.
@@ -161,20 +161,25 @@ pub struct StyleInfo {
     pub authors: Vec<StyleAttribution>,
     /// Contributors to the style
     #[serde(rename = "contributor")]
+    #[serde(default)]
     pub contibutors: Vec<StyleAttribution>,
     /// Which format the citations are in.
-    pub category: Option<StyleCategory>,
+    #[serde(default)]
+    pub category: Vec<StyleCategory>,
     /// Which academic field the style is used in.
+    #[serde(default)]
     pub field: Vec<Field>,
     /// A unique identifier for the style. May be a URL or an UUID.
     pub id: String,
     /// The ISSN for the source of the style's publication.
+    #[serde(default)]
     pub issn: Vec<String>,
     /// The eISSN for the source of the style's publication.
     pub eissn: Option<String>,
     /// The ISSN-L for the source of the style's publication.
     pub issnl: Option<String>,
     /// Links with more information about the style.
+    #[serde(default)]
     pub link: Vec<InfoLink>,
     /// When the style was initially published.
     pub published: Option<Timestamp>,
@@ -232,6 +237,7 @@ pub enum StyleCategory {
 
 /// What type of in-text citation is used.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum CitationFormat {
     /// “… (Doe, 1999)”
     AuthorDate,
@@ -582,6 +588,7 @@ pub struct Layout {
 
 /// Possible parts of a formatting rule.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum LayoutRenderingElement {
     /// Insert a term or variable.
     Text(Text),
@@ -728,6 +735,9 @@ pub struct DatePart {
     /// Kind of the date part.
     #[serde(rename = "@name")]
     pub name: DatePartName,
+    /// Form of the date part.
+    #[serde(rename = "@form")]
+    form: Option<DateAnyForm>,
     /// The string used to delimit two date parts.
     #[serde(rename = "@range-delimiter")]
     pub range_delimiter: Option<String>,
@@ -750,6 +760,11 @@ pub struct DatePart {
 impl DatePart {
     /// Retrieve the default delimiter for the date part.
     pub const DEFAULT_DELIMITER: &str = "–";
+
+    /// Retrieve the form.
+    pub fn form(&self) -> Option<DateStrongAnyForm> {
+        DateStrongAnyForm::for_name(self.name, self.form?)
+    }
 }
 
 /// The kind of a date part with its `form` attribute.
@@ -757,18 +772,78 @@ impl DatePart {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DatePartName {
-    Day {
-        #[serde(rename = "@form")]
-        form: Option<DateDayForm>,
-    },
-    Month {
-        #[serde(rename = "@form")]
-        form: Option<DateMonthForm>,
-    },
-    Year {
-        #[serde(rename = "@form")]
-        form: Option<DateYearForm>,
-    },
+    Day,
+    Month,
+    Year,
+}
+
+/// Any allowable date part format.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(untagged)]
+pub enum DateAnyForm {
+    /// “1”
+    Numeric,
+    /// “01”
+    NumericLeadingZeros,
+    /// “1st”
+    Ordinal,
+    /// “January”
+    Long,
+    /// “Jan.”
+    Short,
+}
+
+/// Strongly typed date part formats.
+#[allow(missing_docs)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum DateStrongAnyForm {
+    Day(DateDayForm),
+    Month(DateMonthForm),
+    Year(DateYearForm),
+}
+
+impl DateStrongAnyForm {
+    /// Get a strongly typed date form for a name. Must return `Some` for valid
+    /// CSL files.
+    pub fn for_name(name: DatePartName, form: DateAnyForm) -> Option<Self> {
+        Some(match name {
+            DatePartName::Day => Self::Day(form.form_for_day()?),
+            DatePartName::Month => Self::Month(form.form_for_month()?),
+            DatePartName::Year => Self::Year(form.form_for_year()?),
+        })
+    }
+}
+
+impl DateAnyForm {
+    /// Retrieve the form for a day.
+    pub fn form_for_day(&self) -> Option<DateDayForm> {
+        match self {
+            Self::Numeric => Some(DateDayForm::Numeric),
+            Self::NumericLeadingZeros => Some(DateDayForm::NumericLeadingZeros),
+            Self::Ordinal => Some(DateDayForm::Ordinal),
+            _ => None,
+        }
+    }
+
+    /// Retrieve the form for a month.
+    pub fn form_for_month(&self) -> Option<DateMonthForm> {
+        match self {
+            Self::Long => Some(DateMonthForm::Long),
+            Self::Short => Some(DateMonthForm::Short),
+            Self::Numeric => Some(DateMonthForm::Numeric),
+            Self::NumericLeadingZeros => Some(DateMonthForm::NumericLeadingZeros),
+            _ => None,
+        }
+    }
+
+    /// Retrieve the form for a year.
+    pub fn form_for_year(&self) -> Option<DateYearForm> {
+        match self {
+            Self::Long => Some(DateYearForm::Long),
+            Self::Short => Some(DateYearForm::Short),
+            _ => None,
+        }
+    }
 }
 
 /// How a day is formatted.
@@ -1180,21 +1255,45 @@ pub struct Group {
 /// A conditional group of formatting instructions.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct Choose {
-    /// Various branches of the conditional. The first matching branch is used.
-    pub branches: Vec<ChooseBranch>,
+    /// If branch of the conditional group.
+    #[serde(rename = "if")]
+    pub if_: ChooseBranch,
+    /// Other branches of the conditional group. The first matching branch is used.
+    #[serde(rename = "else-if")]
+    #[serde(default)]
+    pub else_if: Vec<ChooseBranch>,
     /// The formatting instructions to use if no branch matches.
-    pub otherwise: Option<Vec<LayoutRenderingElement>>,
+    #[serde(rename = "else")]
+    pub otherwise: Option<ElseBranch>,
 }
 
 /// A single branch of a conditional group.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct ChooseBranch {
-    /// The condition to match.
-    #[serde(rename = "if")]
-    pub if_: ChooseTest,
-    /// The conditions to match if the previous condition did not match.
-    #[serde(rename = "else-if")]
-    pub else_if: Vec<ChooseTest>,
+    /// Other than this choose, two elements would result in the same
+    /// rendering.
+    #[serde(rename = "@disambiguate")]
+    pub disambiguate: Option<bool>,
+    /// The variable contains numeric data.
+    #[serde(rename = "@is-numeric")]
+    /// The variable contains an approximate date.
+    pub is_numeric: Option<Vec<Variable>>,
+    /// The variable contains an approximate date.
+    #[serde(rename = "@is-uncertain-date")]
+    pub is_uncertain_date: Option<Vec<DateVariable>>,
+    /// The locator matches the given type.
+    #[serde(rename = "@locator")]
+    pub locator: Option<Vec<Locator>>,
+    /// Tests the position of this citation in the citations to the same item.
+    /// Only ever true for citations.
+    #[serde(rename = "@position")]
+    pub position: Option<Vec<TestPosition>>,
+    /// Tests whether the item is of a certain type.
+    #[serde(rename = "@type")]
+    pub type_: Option<Vec<Kind>>,
+    #[serde(rename = "@variable")]
+    /// Tests whether the default form of this variable is non-empty.
+    pub variable: Option<Vec<Variable>>,
     /// How to handle the set of tests.
     #[serde(rename = "@match")]
     pub match_: ChooseMatch,
@@ -1203,32 +1302,60 @@ pub struct ChooseBranch {
     pub children: Vec<LayoutRenderingElement>,
 }
 
-/// A single test in a conditional group.
+impl ChooseBranch {
+    /// Retrieve the test of this branch. Valid CSL files must return `Some`
+    /// here.
+    pub fn test(&self) -> Option<ChooseTest> {
+        if let Some(disambiguate) = self.disambiguate {
+            if !disambiguate {
+                None
+            } else {
+                Some(ChooseTest::Disambiguate)
+            }
+        } else if let Some(is_numeric) = &self.is_numeric {
+            Some(ChooseTest::IsNumeric(is_numeric))
+        } else if let Some(is_uncertain_date) = &self.is_uncertain_date {
+            Some(ChooseTest::IsUncertainDate(is_uncertain_date))
+        } else if let Some(locator) = &self.locator {
+            Some(ChooseTest::Locator(locator))
+        } else if let Some(position) = &self.position {
+            Some(ChooseTest::Position(position))
+        } else if let Some(type_) = &self.type_ {
+            Some(ChooseTest::Type(type_))
+        } else {
+            self.variable.as_ref().map(|variable| ChooseTest::Variable(variable))
+        }
+    }
+}
+
+/// The formatting instructions to use if no branch matches.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub enum ChooseTest {
+pub struct ElseBranch {
+    /// The formatting instructions.
+    /// TODO: May need to accept <cs:layout>.
+    #[serde(rename = "$value")]
+    children: Vec<LayoutRenderingElement>,
+}
+
+/// A single test in a conditional group.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum ChooseTest<'a> {
     /// Other than this choose, two elements would result in the same
     /// rendering.
-    #[serde(rename = "@disambiguate")]
     Disambiguate,
     /// The variable contains numeric data.
-    #[serde(rename = "@is-numeric")]
-    IsNumeric(Vec<Variable>),
+    IsNumeric(&'a [Variable]),
     /// The variable contains an approximate date.
-    #[serde(rename = "@is-uncertain-date")]
-    IsUncertainDate(Vec<DateVariable>),
+    IsUncertainDate(&'a [DateVariable]),
     /// The locator matches the given type.
-    #[serde(rename = "@locator")]
-    Locator(Vec<Locator>),
+    Locator(&'a [Locator]),
     /// Tests the position of this citation in the citations to the same item.
     /// Only ever true for citations.
-    #[serde(rename = "@position")]
-    Position(Vec<TestPosition>),
+    Position(&'a [TestPosition]),
     /// Tests whether the item is of a certain type.
-    #[serde(rename = "@type")]
-    Type(Vec<Kind>),
-    #[serde(rename = "@variable")]
+    Type(&'a [Kind]),
     /// Tests whether the default form of this variable is non-empty.
-    Variable(Vec<Variable>),
+    Variable(&'a [Variable]),
 }
 
 /// Possible positions of a citation in the citations to the same item.
@@ -1268,7 +1395,7 @@ pub struct CslMacro {
     pub name: String,
     /// The formatting instructions.
     #[serde(rename = "$value")]
-    pub children: Vec<RenderingElement>,
+    pub children: Vec<LayoutRenderingElement>,
 }
 
 /// Root element of a locale file.
@@ -1567,4 +1694,26 @@ pub enum TextCase {
     SentenceCase,
     /// Title case. Only applies to English.
     TitleCase,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use quick_xml::de::Deserializer;
+    use std::fs;
+
+    #[test]
+    fn test_example() {
+        let file = "tests/art-history.csl";
+        let source = fs::read_to_string(file).unwrap();
+        let style_deserializer = &mut Deserializer::from_str(&source);
+        let result: Result<IndependentStyle, _> =
+            serde_path_to_error::deserialize(style_deserializer);
+        match result {
+            Ok(_) => panic!("expected a type error"),
+            Err(err) => {
+                dbg!(err);
+            }
+        }
+    }
 }
