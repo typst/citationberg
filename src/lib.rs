@@ -1983,16 +1983,16 @@ mod test {
 
     #[test]
     fn test_independent() {
-        check_style("../../tests/independent", "independent CSL style");
+        check_style("tests/independent", "independent CSL style");
     }
 
     #[test]
     fn test_dependent() {
-        check_style("../../tests/dependent", "dependent CSL style");
+        check_style("tests/dependent", "dependent CSL style");
     }
 
     #[test]
     fn test_locale() {
-        check_locale("../../tests/locales");
+        check_locale("tests/locales");
     }
 }
