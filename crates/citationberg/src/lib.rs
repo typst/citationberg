@@ -3,15 +3,19 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+use std::num::NonZeroUsize;
 use std::ops::{Deref, Not};
 
 use serde::Deserialize;
 
+use quick_xml::de::Deserializer;
 use taxonomy::{
     DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm, Term, Variable,
 };
 
 pub mod taxonomy;
+
+const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(2048);
 
 /// A boolean in CSL.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
@@ -67,27 +71,7 @@ impl<'de> Deserialize<'de> for NonNegativeInteger {
 /// A CSL style.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-#[serde(untagged)]
-pub enum Style {
-    /// Reference to another style.
-    Dependent(DependentStyle),
-    /// A style that can be used on its own.
-    Independent(IndependentStyle),
-}
-
-impl Style {
-    /// Retrieve the style's default locale.
-    pub const fn default_locale(&self) -> Option<&LocaleCode> {
-        match self {
-            Style::Dependent(style) => style.default_locale.as_ref(),
-            Style::Independent(style) => style.default_locale.as_ref(),
-        }
-    }
-}
-
-/// A style that depends on another style but has its own metadata.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct DependentStyle {
+pub struct Style {
     /// The style's metadata.
     pub info: StyleInfo,
     /// The locale used if the user didn't specify one.
@@ -97,34 +81,40 @@ pub struct DependentStyle {
     /// The CSL version the style is compatible with.
     #[serde(rename = "@version")]
     pub version: String,
+    /// The style's formatting rules.
+    #[serde(flatten)]
+    pub rules: Option<IndependentStyle>,
 }
 
-impl DependentStyle {
-    /// Retrieve the link to the parent style.
-    ///
-    /// Only returns `None` if the style is not spec-compliant.
+impl Style {
+    /// Create a style from an XML file.
+    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+        let style_deserializer = &mut Deserializer::from_str(xml);
+        style_deserializer.event_buffer_size(EVENT_BUFFER_SIZE);
+        let style = Style::deserialize(style_deserializer)?;
+        Ok(style)
+    }
+
+    /// Retrieve the link to the parent style for dependent styles.
     pub fn parent_link(&self) -> Option<&InfoLink> {
         self.info
             .link
             .iter()
             .find(|link| link.rel == InfoLinkRel::IndependentParent)
     }
+
+    /// Check if the style is dependent.
+    pub fn is_dependent(&self) -> bool {
+        self.rules.is_none()
+    }
 }
 
 /// A style with its own formatting rules.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct IndependentStyle {
-    /// The style's metadata.
-    pub info: StyleInfo,
     /// How the citations are displayed.
     #[serde(rename = "@class")]
     pub class: StyleClass,
-    /// The locale used if the user didn't specify one.
-    #[serde(rename = "@default-locale")]
-    pub default_locale: Option<LocaleCode>,
-    /// The CSL version the style is compatible with.
-    #[serde(rename = "@version")]
-    pub version: String,
     /// How notes or in-text citations are displayed.
     pub citation: Citation,
     /// How the bibliography is displayed.
@@ -360,7 +350,7 @@ pub struct InfoLink {
 
 /// How a link relates to the style.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum InfoLinkRel {
     /// Website of the style.
     #[serde(rename = "self")]
@@ -1757,12 +1747,9 @@ pub enum TextCase {
 #[cfg(test)]
 mod test {
     use super::*;
-    use quick_xml::de::Deserializer;
     use std::fs;
 
-    #[test]
-    fn test_example() {
-        let csl_files = "../../tests/";
+    fn folder(csl_files: &'static str) {
         let mut failures = 0;
         let mut tests = 0;
 
@@ -1779,7 +1766,8 @@ mod test {
 
             let source = fs::read_to_string(&path).unwrap();
             let style_deserializer = &mut Deserializer::from_str(&source);
-            let result: Result<IndependentStyle, _> =
+            style_deserializer.event_buffer_size(EVENT_BUFFER_SIZE);
+            let result: Result<Style, _> =
                 serde_path_to_error::deserialize(style_deserializer);
             match result {
                 // Ok(_) => println!("✅ {:?} passed", &path),
@@ -1802,5 +1790,15 @@ mod test {
         if failures > 0 {
             panic!("{} tests failed", failures);
         }
+    }
+
+    #[test]
+    fn test_independent() {
+        folder("../../tests/independent");
+    }
+
+    #[test]
+    fn test_dependent() {
+        folder("../../tests/dependent");
     }
 }
