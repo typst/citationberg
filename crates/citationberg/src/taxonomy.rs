@@ -597,6 +597,7 @@ impl From<Kind> for Term {
 #[serde(rename_all = "kebab-case")]
 #[allow(missing_docs)]
 pub enum Locator {
+    Act,
     Appendix,
     ArticleLocator,
     Book,
@@ -615,12 +616,14 @@ pub enum Locator {
     Paragraph,
     Part,
     Rule,
+    Scene,
     Section,
     SubVerbo,
     Supplement,
     Table,
     Timestamp,
     Title,
+    TitleLocator,
     Verse,
     Volume,
 }

@@ -8,7 +8,7 @@ use std::ops::{Deref, Not};
 
 use serde::Deserialize;
 
-use quick_xml::de::Deserializer;
+use quick_xml::de::{Deserializer, SliceReader};
 use taxonomy::{
     DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm, Term, Variable,
 };
@@ -68,6 +68,61 @@ impl<'de> Deserialize<'de> for NonNegativeInteger {
     }
 }
 
+/// Allow every struct with formatting properties to convert to a `Formatting`.
+pub trait ToFormatting {
+    /// Obtain a `Formatting`.
+    fn to_formatting(&self) -> Formatting;
+}
+
+macro_rules! to_formatting {
+    ($name:ty, self) => {
+        impl ToFormatting for $name {
+            fn to_formatting(&self) -> Formatting {
+                Formatting {
+                    font_style: self.font_style,
+                    font_variant: self.font_variant,
+                    font_weight: self.font_weight,
+                    text_decoration: self.text_decoration,
+                    vertical_align: self.vertical_align,
+                }
+            }
+        }
+    };
+    ($name:ty) => {
+        impl ToFormatting for $name {
+            fn to_formatting(&self) -> Formatting {
+                self.formatting.clone()
+            }
+        }
+    };
+}
+
+/// Allow every struct with affix properties to convert to a `Affixes`.
+pub trait ToAffixes {
+    /// Obtain the `Affixes`.
+    fn to_affixes(&self) -> Affixes;
+}
+
+macro_rules! to_affixes {
+    ($name:ty, self) => {
+        impl ToAffixes for $name {
+            fn to_affixes(&self) -> Affixes {
+                Affixes {
+                    prefix: self.prefix.clone(),
+                    suffix: self.suffix.clone(),
+                }
+            }
+        }
+    };
+    ($name:ty) => {
+        impl ToAffixes for $name {
+            fn to_affixes(&self) -> Affixes {
+                self.affixes.clone()
+            }
+        }
+    };
+}
+
 /// A CSL style.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -89,9 +144,8 @@ pub struct Style {
 impl Style {
     /// Create a style from an XML file.
     pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
-        let style_deserializer = &mut Deserializer::from_str(xml);
-        style_deserializer.event_buffer_size(EVENT_BUFFER_SIZE);
-        let style = Style::deserialize(style_deserializer)?;
+        let de = &mut deserializer(xml);
+        let style = Style::deserialize(de)?;
         Ok(style)
     }
 
@@ -109,6 +163,12 @@ impl Style {
     }
 }
 
+fn deserializer(xml: &str) -> Deserializer<SliceReader<'_>> {
+    let mut style_deserializer = Deserializer::from_str(xml);
+    style_deserializer.event_buffer_size(EVENT_BUFFER_SIZE);
+    style_deserializer
+}
+
 /// A style with its own formatting rules.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct IndependentStyle {
@@ -124,7 +184,7 @@ pub struct IndependentStyle {
     pub macros: Vec<CslMacro>,
     /// Override localized strings.
     #[serde(default)]
-    pub locale: Vec<InlineLocale>,
+    pub locale: Vec<Locale>,
     /// Whether to use a hyphen when initializing a name.
     ///
     /// Defaults to `true`.
@@ -244,7 +304,7 @@ pub struct StyleInfo {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct LocalString {
     /// The string's locale.
-    #[serde(rename = "@xml:lang")]
+    #[serde(rename = "@lang")]
     pub lang: Option<LocaleCode>,
     /// The string's value.
     #[serde(rename = "$value", default)]
@@ -365,13 +425,17 @@ pub enum InfoLinkRel {
 
 /// An ISO 8601 chapter 5.4 timestamp.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct Timestamp(pub String);
+pub struct Timestamp {
+    /// The timestamp's value.
+    #[serde(rename = "$text")]
+    pub raw: String,
+}
 
 /// A license description.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct License {
     /// The license's name.
-    #[serde(rename = "$value")]
+    #[serde(rename = "$text")]
     pub name: String,
     /// The license's URL.
     #[serde(rename = "@license")]
@@ -620,18 +684,36 @@ pub struct Layout {
     /// Parts of the rule.
     #[serde(rename = "$value")]
     pub elements: Vec<LayoutRenderingElement>,
-    // TODO: Roll into proc-macro because #[serde(flatten)] doesn't work with
-    // $value fields.
-    /// Set the formatting style.
-    // #[serde(flatten)]
-    // pub formatting: Formatting,
-    // /// Add prefix and suffix.
-    // #[serde(flatten)]
-    // pub affixes: Affixes,
+    // Formatting and affixes fields are rolled into this because
+    // #[serde(flatten)] doesn't work with $value fields.
+    /// Set the font style.
+    #[serde(rename = "@font-style")]
+    pub font_style: Option<FontStyle>,
+    /// Choose normal or small caps.
+    #[serde(rename = "@font-variant")]
+    pub font_variant: Option<FontVariant>,
+    /// Set the font weight.
+    #[serde(rename = "@font-weight")]
+    pub font_weight: Option<FontWeight>,
+    /// Choose underlining.
+    #[serde(rename = "@text-decoration")]
+    pub text_decoration: Option<TextDecoration>,
+    /// Choose vertical alignment.
+    #[serde(rename = "@vertical-align")]
+    pub vertical_align: Option<VerticalAlign>,
+    /// The prefix.
+    #[serde(rename = "@prefix")]
+    pub prefix: Option<String>,
+    /// The suffix.
+    #[serde(rename = "@suffix")]
+    pub suffix: Option<String>,
     /// Delimit pieces of the output.
     #[serde(rename = "@delimiter")]
     pub delimiter: Option<String>,
 }
+
+to_formatting!(Layout, self);
+to_affixes!(Layout, self);
 
 /// Possible parts of a formatting rule.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -692,6 +774,9 @@ pub struct Text {
     #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
 }
+
+to_formatting!(Text);
+to_affixes!(Text);
 
 /// Various kinds of text targets.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -756,6 +841,9 @@ pub struct Date {
     pub text_case: Option<TextCase>,
 }
 
+to_formatting!(Date);
+to_affixes!(Date);
+
 /// Localized date formats.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -804,6 +892,9 @@ pub struct DatePart {
     #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
 }
+
+to_formatting!(DatePart);
+to_affixes!(DatePart);
 
 impl DatePart {
     /// Retrieve the default delimiter for the date part.
@@ -954,6 +1045,9 @@ pub struct Number {
     pub text_case: Option<TextCase>,
 }
 
+to_formatting!(Number);
+to_affixes!(Number);
+
 /// How a number is formatted.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1001,6 +1095,9 @@ pub struct Names {
     pub display: Option<Display>,
 }
 
+to_formatting!(Names);
+to_affixes!(Names);
+
 /// Configuration of how to print names.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case", default)]
@@ -1024,6 +1121,9 @@ pub struct Name {
     #[serde(flatten)]
     pub affixes: Affixes,
 }
+
+to_formatting!(Name);
+to_affixes!(Name);
 
 impl Default for Name {
     fn default() -> Self {
@@ -1173,9 +1273,12 @@ pub struct NamePart {
     #[serde(flatten)]
     pub affixes: Affixes,
     /// Transform the text case.
-    #[serde(flatten)]
+    #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
 }
+
+to_formatting!(NamePart);
+to_affixes!(NamePart);
 
 /// Configure the et al. abbreviation.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -1187,6 +1290,8 @@ pub struct EtAl {
     #[serde(flatten)]
     pub formatting: Formatting,
 }
+
+to_formatting!(EtAl);
 
 /// Which term to use for et al.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -1253,6 +1358,9 @@ pub struct VariablelessLabel {
     pub strip_periods: Boolean,
 }
 
+to_formatting!(VariablelessLabel);
+to_affixes!(VariablelessLabel);
+
 /// How to pluralize a label.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1273,14 +1381,29 @@ pub struct Group {
     /// The formatting instructions.
     #[serde(rename = "$value")]
     pub children: Vec<LayoutRenderingElement>,
-    // TODO: Roll into proc-macro because #[serde(flatten)] doesn't work with
-    // $value fields.
-    /// Override formatting style.
-    // #[serde(flatten)]
-    // pub formatting: Formatting,
-    // /// Add prefix and suffix.
-    // #[serde(flatten)]
-    // pub affixes: Affixes,
+    // Formatting and affixes fields are rolled into this because
+    // #[serde(flatten)] doesn't work with $value fields.
+    /// Set the font style.
+    #[serde(rename = "@font-style")]
+    pub font_style: Option<FontStyle>,
+    /// Choose normal or small caps.
+    #[serde(rename = "@font-variant")]
+    pub font_variant: Option<FontVariant>,
+    /// Set the font weight.
+    #[serde(rename = "@font-weight")]
+    pub font_weight: Option<FontWeight>,
+    /// Choose underlining.
+    #[serde(rename = "@text-decoration")]
+    pub text_decoration: Option<TextDecoration>,
+    /// Choose vertical alignment.
+    #[serde(rename = "@vertical-align")]
+    pub vertical_align: Option<VerticalAlign>,
+    /// The prefix.
+    #[serde(rename = "@prefix")]
+    pub prefix: Option<String>,
+    /// The suffix.
+    #[serde(rename = "@suffix")]
+    pub suffix: Option<String>,
     /// Delimit pieces of the output.
     #[serde(rename = "@delimiter")]
     pub delimiter: Option<String>,
@@ -1288,6 +1411,9 @@ pub struct Group {
     #[serde(rename = "@display")]
     pub display: Option<Display>,
 }
+
+to_formatting!(Group, self);
+to_affixes!(Group, self);
 
 /// A conditional group of formatting instructions.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
@@ -1437,33 +1563,17 @@ pub struct CslMacro {
 }
 
 /// Root element of a locale file.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct LocaleRoot {
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct LocaleFile {
     /// The version of the locale file.
+    #[serde(rename = "@version")]
     pub version: String,
     /// Which languages or dialects this data applies to.
+    #[serde(rename = "@lang")]
     pub lang: LocaleCode,
     /// Metadata of the locale.
-    pub locale_info: Option<LocaleInfo>,
-    /// The terms used in the locale.
-    pub terms: Terms,
-    /// How to format dates in the locale.
-    /// file.
-    pub date: DateLocale,
-    /// Style options for the locale.
-    pub style_options: LocaleOptions,
-}
-
-/// Supplemental localization data in a citation style.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct InlineLocale {
-    /// Which languages or dialects this data applies to. Must be `Some` if this
-    /// appears in a locale file.
-    #[serde(rename = "@xml:lang")]
-    pub lang: Option<LocaleCode>,
-    /// Metadata of the locale.
-    #[serde(rename = "info")]
-    pub locale_info: Option<LocaleInfo>,
+    pub info: Option<LocaleInfo>,
     /// The terms used in the locale.
     pub terms: Option<Terms>,
     /// How to format dates in the locale file.
@@ -1473,11 +1583,62 @@ pub struct InlineLocale {
     pub style_options: Option<LocaleOptions>,
 }
 
+/// Supplemental localization data in a citation style.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Locale {
+    /// Which languages or dialects this data applies to. Must be `Some` if this
+    /// appears in a locale file.
+    #[serde(rename = "@lang")]
+    pub lang: Option<LocaleCode>,
+    /// Metadata of the locale.
+    pub info: Option<LocaleInfo>,
+    /// The terms used in the locale.
+    pub terms: Option<Terms>,
+    /// How to format dates in the locale file.
+    #[serde(default)]
+    pub date: Vec<DateLocale>,
+    /// Style options for the locale.
+    pub style_options: Option<LocaleOptions>,
+}
+
+impl From<LocaleFile> for Locale {
+    fn from(file: LocaleFile) -> Self {
+        Self {
+            lang: Some(file.lang),
+            info: file.info,
+            terms: file.terms,
+            date: file.date,
+            style_options: file.style_options,
+        }
+    }
+}
+
+impl TryFrom<Locale> for LocaleFile {
+    type Error = ();
+
+    fn try_from(value: Locale) -> Result<Self, Self::Error> {
+        if value.lang.is_some() {
+            Ok(Self {
+                version: "1.0".to_string(),
+                lang: value.lang.unwrap(),
+                info: value.info,
+                terms: value.terms,
+                date: value.date,
+                style_options: value.style_options,
+            })
+        } else {
+            Err(())
+        }
+    }
+}
+
 /// Metadata of a locale.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct LocaleInfo {
     /// The translators of the locale.
     #[serde(rename = "translator")]
+    #[serde(default)]
     pub translators: Vec<StyleAttribution>,
     /// The license under which the locale is published.
     pub rights: Option<License>,
@@ -1747,17 +1908,25 @@ pub enum TextCase {
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::fs;
+    use std::{error::Error, fs};
 
-    fn folder(csl_files: &'static str) {
+    fn folder<F>(
+        files: &'static str,
+        extension: &'static str,
+        kind: &'static str,
+        mut check: F,
+    ) where
+        F: FnMut(&str) -> Option<Box<dyn Error>>,
+    {
         let mut failures = 0;
         let mut tests = 0;
 
         // Read each `.csl` file in the `tests` directory.
-        for entry in fs::read_dir(csl_files).unwrap() {
+        for entry in fs::read_dir(files).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
-            if path.extension().unwrap() != "csl" || !entry.file_type().unwrap().is_file()
+            if path.extension().unwrap() != extension
+                || !entry.file_type().unwrap().is_file()
             {
                 continue;
             }
@@ -1765,17 +1934,10 @@ mod test {
             tests += 1;
 
             let source = fs::read_to_string(&path).unwrap();
-            let style_deserializer = &mut Deserializer::from_str(&source);
-            style_deserializer.event_buffer_size(EVENT_BUFFER_SIZE);
-            let result: Result<Style, _> =
-                serde_path_to_error::deserialize(style_deserializer);
-            match result {
-                // Ok(_) => println!("✅ {:?} passed", &path),
-                Ok(_) => {}
-                Err(err) => {
-                    println!("❌ {:?} failed: \n\n{:#?}", &path, &err);
-                    failures += 1;
-                }
+            let result = check(&source);
+            if let Some(err) = result {
+                failures += 1;
+                println!("❌ {:?} failed: \n\n{:#?}", &path, &err);
             }
         }
 
@@ -1785,20 +1947,52 @@ mod test {
             print!("\n😢")
         }
 
-        println!(" {} out of {} CSL files parsed successfully", tests - failures, tests);
+        println!(
+            " {} out of {} {} files parsed successfully",
+            tests - failures,
+            tests,
+            kind
+        );
 
         if failures > 0 {
             panic!("{} tests failed", failures);
         }
     }
 
+    fn check_style(csl_files: &'static str, kind: &'static str) {
+        folder(csl_files, "csl", kind, |source| {
+            let de = &mut deserializer(source);
+            let result: Result<Style, _> = serde_path_to_error::deserialize(de);
+            match result {
+                Ok(_) => None,
+                Err(err) => Some(Box::new(err)),
+            }
+        })
+    }
+
+    fn check_locale(locale_files: &'static str) {
+        folder(locale_files, "xml", "Locale", |source| {
+            let de = &mut deserializer(source);
+            let result: Result<LocaleFile, _> = serde_path_to_error::deserialize(de);
+            match result {
+                Ok(_) => None,
+                Err(err) => Some(Box::new(err)),
+            }
+        })
+    }
+
     #[test]
     fn test_independent() {
-        folder("../../tests/independent");
+        check_style("../../tests/independent", "independent CSL style");
     }
 
     #[test]
     fn test_dependent() {
-        folder("../../tests/dependent");
+        check_style("../../tests/dependent", "dependent CSL style");
+    }
+
+    #[test]
+    fn test_locale() {
+        check_locale("../../tests/locales");
     }
 }
