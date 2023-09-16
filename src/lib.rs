@@ -136,9 +136,18 @@ pub struct Style {
     /// The CSL version the style is compatible with.
     #[serde(rename = "@version")]
     pub version: String,
-    /// The style's formatting rules.
+    /// How notes or in-text citations are displayed. Must be present in
+    /// independent styles.
+    pub citation: Option<Citation>,
+    /// The style's settings. Must be present in dependent styles.
     #[serde(flatten)]
-    pub rules: Option<IndependentStyle>,
+    pub independant_settings: Option<IndependentStyleSettings>,
+    /// Reusable formatting rules.
+    #[serde(rename = "macro", default)]
+    pub macros: Vec<CslMacro>,
+    /// Override localized strings.
+    #[serde(default)]
+    pub locale: Vec<Locale>,
 }
 
 impl Style {
@@ -159,7 +168,7 @@ impl Style {
 
     /// Check if the style is dependent.
     pub fn is_dependent(&self) -> bool {
-        self.rules.is_none()
+        self.independant_settings.is_none() && self.citation.is_none()
     }
 }
 
@@ -171,26 +180,16 @@ fn deserializer(xml: &str) -> Deserializer<SliceReader<'_>> {
 
 /// A style with its own formatting rules.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct IndependentStyle {
+pub struct IndependentStyleSettings {
     /// How the citations are displayed.
     #[serde(rename = "@class")]
     pub class: StyleClass,
-    /// How notes or in-text citations are displayed.
-    pub citation: Citation,
-    /// How the bibliography is displayed.
-    pub bibliography: Option<Bibliography>,
-    /// Reusable formatting rules.
-    #[serde(rename = "macro", default)]
-    pub macros: Vec<CslMacro>,
-    /// Override localized strings.
-    #[serde(default)]
-    pub locale: Vec<Locale>,
     /// Whether to use a hyphen when initializing a name.
     ///
     /// Defaults to `true`.
     #[serde(
         rename = "@initialize-with-hyphen",
-        default = "IndependentStyle::default_initialize_with_hyphen"
+        default = "IndependentStyleSettings::default_initialize_with_hyphen"
     )]
     pub initialize_with_hyphen: Boolean,
     /// Specifies how to reformat page ranges.
@@ -199,12 +198,12 @@ pub struct IndependentStyle {
     /// How to treat the non-dropping name particle when sorting.
     #[serde(rename = "@demote-non-dropping-particle", default)]
     pub demote_non_dropping_particle: DemoteNonDroppingParticle,
-    /// Options for the names within.
+    /// Options for the names within. Only defined for dependent styles.
     #[serde(flatten)]
     pub options: InheritableNameOptions,
 }
 
-impl IndependentStyle {
+impl IndependentStyleSettings {
     /// Return the default value for `initialize_with_hyphen`.
     pub const fn default_initialize_with_hyphen() -> Boolean {
         Boolean(true)
@@ -780,30 +779,56 @@ to_affixes!(Text);
 
 /// Various kinds of text targets.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(untagged)]
 pub enum TextTarget {
     /// Prints the value of a variable.
-    #[serde(rename = "@variable")]
-    Variable(Variable),
+    Variable {
+        #[serde(rename = "@variable")]
+        /// The variable to print.
+        var: Variable,
+        #[serde(rename = "@form", default)]
+        /// The form of the variable.
+        form: LongShortForm,
+    },
     /// Prints the text output of a macro.
-    #[serde(rename = "@macro")]
-    Macro(String),
+    Macro {
+        #[serde(rename = "@macro")]
+        /// The name of the macro.
+        name: String,
+    },
     /// Prints a localized term.
-    #[serde(rename = "@term")]
-    Term(Term),
+    Term {
+        /// The term to print.
+        #[serde(rename = "@term")]
+        term: Term,
+        /// The form of the term.
+        #[serde(rename = "@form", default)]
+        form: TermForm,
+        /// Whether the term is pluralized.
+        #[serde(rename = "@plural", default)]
+        plural: Boolean,
+    },
     /// Prints a given string.
-    #[serde(rename = "@value")]
-    Value(String),
+    Value {
+        #[serde(rename = "@value")]
+        /// The string to print.
+        val: String,
+    },
 }
 
 impl From<Variable> for TextTarget {
     fn from(value: Variable) -> Self {
-        Self::Variable(value)
+        Self::Variable { var: value, form: LongShortForm::default() }
     }
 }
 
 impl From<Term> for TextTarget {
     fn from(value: Term) -> Self {
-        Self::Term(value)
+        Self::Term {
+            term: value,
+            form: TermForm::default(),
+            plural: Boolean::default(),
+        }
     }
 }
 
@@ -938,7 +963,7 @@ pub enum DateAnyForm {
 pub enum DateStrongAnyForm {
     Day(DateDayForm),
     Month(DateMonthForm),
-    Year(DateYearForm),
+    Year(LongShortForm),
 }
 
 impl DateStrongAnyForm {
@@ -976,10 +1001,10 @@ impl DateAnyForm {
     }
 
     /// Retrieve the form for a year.
-    pub fn form_for_year(&self) -> Option<DateYearForm> {
+    pub fn form_for_year(&self) -> Option<LongShortForm> {
         match self {
-            Self::Long => Some(DateYearForm::Long),
-            Self::Short => Some(DateYearForm::Short),
+            Self::Long => Some(LongShortForm::Long),
+            Self::Short => Some(LongShortForm::Short),
             _ => None,
         }
     }
@@ -1011,13 +1036,13 @@ pub enum DateMonthForm {
     NumericLeadingZeros,
 }
 
-/// How a year is formatted.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+/// Whether to format something in long or short form.
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum DateYearForm {
-    /// “2005”
+#[allow(missing_docs)]
+pub enum LongShortForm {
+    #[default]
     Long,
-    /// “05”
     Short,
 }
 
@@ -1557,9 +1582,9 @@ pub struct CslMacro {
     /// The name of the macro.
     #[serde(rename = "@name")]
     pub name: String,
-    // /// The formatting instructions.
-    // #[serde(rename = "$value")]
-    // pub children: Vec<LayoutRenderingElement>,
+    /// The formatting instructions.
+    #[serde(rename = "$value")]
+    pub children: Vec<LayoutRenderingElement>,
 }
 
 /// Root element of a locale file.
@@ -1925,7 +1950,7 @@ mod test {
         for entry in fs::read_dir(files).unwrap() {
             let entry = entry.unwrap();
             let path = entry.path();
-            if path.extension().unwrap() != extension
+            if path.extension().map(|os| os.to_str().unwrap()) != Some(extension)
                 || !entry.file_type().unwrap().is_file()
             {
                 continue;
