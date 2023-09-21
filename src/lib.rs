@@ -1293,7 +1293,7 @@ impl Default for Name {
 }
 
 /// Global configuration of how to print names.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
 #[serde(default)]
 pub struct InheritableNameOptions {
     /// Delimiter between second-to-last and last name.
@@ -1307,10 +1307,10 @@ pub struct InheritableNameOptions {
     pub names_delimiter: Option<String>,
     /// Delimiter before et al.
     #[serde(rename = "@delimiter-precedes-et-al")]
-    pub delimiter_precedes_et_al: DelimiterBehavior,
+    pub delimiter_precedes_et_al: Option<DelimiterBehavior>,
     /// Whether to use the delimiter before the last name.
     #[serde(rename = "@delimiter-precedes-last")]
-    pub delimiter_precedes_last: DelimiterBehavior,
+    pub delimiter_precedes_last: Option<DelimiterBehavior>,
     /// Minimum number of names to use et al.
     #[serde(rename = "@et-al-min")]
     pub et_al_min: Option<NonNegativeInteger>,
@@ -1326,13 +1326,13 @@ pub struct InheritableNameOptions {
     /// Whether to use the last name in the author list when there are at least
     /// `et_al_min` names.
     #[serde(rename = "@et-al-use-last")]
-    pub et_al_use_last: Boolean,
+    pub et_al_use_last: Option<Boolean>,
     /// Which name parts to display for personal names.
     #[serde(rename = "@name-form")]
-    pub name_form: NameForm,
+    pub name_form: Option<NameForm>,
     /// Whether to initialize the first name if `initialize-with` is Some.
     #[serde(rename = "@initialize")]
-    pub initialize: Boolean,
+    pub initialize: Option<Boolean>,
     /// String to initialize the first name with.
     #[serde(rename = "@initialize-with")]
     pub initialize_with: Option<String>,
@@ -1342,27 +1342,40 @@ pub struct InheritableNameOptions {
     /// Delimiter between given name and first name. Only used if
     /// `name-as-sort-order` is Some.
     #[serde(rename = "@sort-separator")]
-    pub sort_separator: String,
+    pub sort_separator: Option<String>,
 }
 
-impl Default for InheritableNameOptions {
-    fn default() -> Self {
+impl InheritableNameOptions {
+    /// Apply the child options to the parent options.
+    pub fn apply(&self, child: Self) -> Self {
         Self {
-            and: None,
-            name_delimiter: None,
-            names_delimiter: None,
-            delimiter_precedes_et_al: DelimiterBehavior::default(),
-            delimiter_precedes_last: DelimiterBehavior::default(),
-            et_al_min: None,
-            et_al_use_first: None,
-            et_al_subsequent_min: None,
-            et_al_subsequent_use_first: None,
-            et_al_use_last: Boolean::default(),
-            name_form: NameForm::default(),
-            initialize: Boolean::default(),
-            initialize_with: None,
-            name_as_sort_order: None,
-            sort_separator: ",".to_string(),
+            and: child.and.or(self.and),
+            name_delimiter: child.name_delimiter.or_else(|| self.name_delimiter.clone()),
+            names_delimiter: child
+                .names_delimiter
+                .or_else(|| self.names_delimiter.clone()),
+            delimiter_precedes_et_al: child
+                .delimiter_precedes_et_al
+                .or(self.delimiter_precedes_et_al),
+            delimiter_precedes_last: child
+                .delimiter_precedes_last
+                .or(self.delimiter_precedes_last),
+            et_al_min: child.et_al_min.or(self.et_al_min),
+            et_al_use_first: child.et_al_use_first.or(self.et_al_use_first),
+            et_al_subsequent_min: child
+                .et_al_subsequent_min
+                .or(self.et_al_subsequent_min),
+            et_al_subsequent_use_first: child
+                .et_al_subsequent_use_first
+                .or(self.et_al_subsequent_use_first),
+            et_al_use_last: child.et_al_use_last.or(self.et_al_use_last),
+            name_form: child.name_form.or(self.name_form),
+            initialize: child.initialize.or(self.initialize),
+            initialize_with: child
+                .initialize_with
+                .or_else(|| self.initialize_with.clone()),
+            name_as_sort_order: child.name_as_sort_order.or(self.name_as_sort_order),
+            sort_separator: child.sort_separator.or_else(|| self.sort_separator.clone()),
         }
     }
 }
@@ -1764,42 +1777,124 @@ impl Locale {
         })
     }
 
-    /// Check whether the locale has any ordinal terms.
-    pub fn has_ordinals(&self) -> bool {
-        self.terms
-            .as_ref()
-            .map(|terms| terms.terms.iter().any(|t| t.name.is_ordinal()))
-            .unwrap_or_default()
+    /// Retrieve a struct for ordinal term lookups if this locale contains any
+    /// ordinal terms.
+    pub fn ordinals(&self) -> Option<OrdinalLookup<'_>> {
+        self.terms.as_ref().and_then(|terms| {
+            terms.terms.iter().any(|t| t.name.is_ordinal()).then(|| {
+                OrdinalLookup::new(terms.terms.iter().filter(|t| t.name.is_ordinal()))
+            })
+        })
+    }
+}
+
+/// Get the right forms of ordinal terms for numbers.
+pub struct OrdinalLookup<'a> {
+    terms: Vec<&'a LocalizedTerm>,
+    legacy_behavior: bool,
+}
+
+impl<'a> OrdinalLookup<'a> {
+    fn new(ordinal_terms: impl Iterator<Item = &'a LocalizedTerm>) -> Self {
+        let terms = ordinal_terms.collect::<Vec<_>>();
+        let mut legacy_behavior = false;
+        // Must not define "OtherTerm::Ordinal"
+        let defines_ordinal =
+            terms.iter().any(|t| t.name == Term::Other(OtherTerm::Ordinal));
+
+        if !defines_ordinal {
+            // Contains OtherTerm::OrdinalN(1) - OtherTerm::OrdinalN(4)
+            legacy_behavior = (1..=4).all(|n| {
+                terms.iter().any(|t| t.name == Term::Other(OtherTerm::OrdinalN(n)))
+            })
+        }
+
+        Self { terms, legacy_behavior }
     }
 
-    /// Check whether the locale defaults to legacy 1.0 behavior.
-    pub fn uses_legacy_behavior(&self) -> bool {
-        // Must not define "OtherTerm::Ordinal"
-        if self
-            .terms
-            .as_ref()
-            .map(|terms| {
-                terms.terms.iter().any(|t| t.name != Term::Other(OtherTerm::Ordinal))
+    /// Look up a short ordinal for a number.
+    pub fn lookup(&self, n: i32) -> Option<&'a str> {
+        let mut best_match: Option<&'a LocalizedTerm> = None;
+
+        // Prefer match with o > 9 and the smallest difference to n
+        let mut change_match = |other_match: &'a LocalizedTerm| {
+            let current = if let Some(current) = best_match {
+                current
+            } else {
+                best_match = Some(other_match);
+                return;
+            };
+
+            let Term::Other(OtherTerm::OrdinalN(other_n)) = other_match.name else {
+                return;
+            };
+
+            let Term::Other(OtherTerm::OrdinalN(curr_n)) = other_match.name else {
+                best_match = Some(other_match);
+                return;
+            };
+
+            best_match = Some(if other_n >= 10 && curr_n < 10 {
+                other_match
+            } else if other_n < 10 && curr_n >= 10 {
+                current
+            } else {
+                let diff_other = (n - other_n as i32).abs();
+                let diff_curr = (n - curr_n as i32).abs();
+
+                if diff_other <= diff_curr {
+                    other_match
+                } else {
+                    current
+                }
             })
-            .unwrap_or_default()
-        {
-            return false;
         };
 
-        // Contains OtherTerm::OrdinalN(0) - OtherTerm::OrdinalN(4)
-        std::iter::successors(Some(0), |n: &u8| n.checked_add(1))
-            .take(4)
-            .all(|n| {
-                self.terms
-                    .as_ref()
-                    .map(|terms| {
-                        terms
-                            .terms
-                            .iter()
-                            .all(|t| t.name != Term::Other(OtherTerm::OrdinalN(n)))
-                    })
-                    .unwrap_or_default()
+        for term in self.terms.iter().copied() {
+            let Term::Other(term_name) = term.name else { continue };
+
+            let hit = match term_name {
+                OtherTerm::Ordinal => true,
+                OtherTerm::OrdinalN(o) if self.legacy_behavior => {
+                    let class = match (n, n % 10) {
+                        (11..=13, _) => 4,
+                        (_, v @ 1..=3) => v as u8,
+                        _ => 4,
+                    };
+                    o == class
+                }
+                OtherTerm::OrdinalN(o @ 0..=9) => match term.match_ {
+                    Some(OrdinalMatch::LastDigit) | None => n % 10 == o as i32,
+                    Some(OrdinalMatch::LastTwoDigits) => n % 100 == o as i32,
+                    Some(OrdinalMatch::WholeNumber) => n == o as i32,
+                },
+                OtherTerm::OrdinalN(o @ 10..=99) => match term.match_ {
+                    Some(OrdinalMatch::LastTwoDigits) | None => n % 100 == o as i32,
+                    Some(OrdinalMatch::WholeNumber) => n == o as i32,
+                    _ => false,
+                },
+                _ => false,
+            };
+
+            if hit {
+                change_match(term);
+            }
+        }
+
+        best_match.and_then(|t| t.single().or_else(|| t.multiple()))
+    }
+
+    /// Look up a long ordinal for a number. Includes fallback to short
+    /// ordinals.
+    pub fn lookup_long(&self, n: i32) -> Option<&'a str> {
+        self.terms
+            .iter()
+            .find(|t| {
+                let Term::Other(OtherTerm::LongOrdinal(o)) = t.name else { return false };
+                n == o as i32
             })
+            .and_then(|t| t.single().or_else(|| t.multiple()))
+            .or_else(|| self.lookup(n))
     }
 }
 
