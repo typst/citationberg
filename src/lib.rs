@@ -214,6 +214,135 @@ impl IndependentStyleSettings {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct LocaleCode(pub String);
 
+impl<'a> LocaleCode {
+    /// Get the US English locale.
+    pub fn en_us() -> Self {
+        Self("en-US".to_string())
+    }
+
+    /// Get the base language code.
+    pub fn parse_base(&self) -> Option<BaseLanguage> {
+        let mut parts = self.0.split('-').take(2);
+        let first = parts.next()?;
+
+        match first {
+            "i" | "I" => {
+                let second = parts.next()?;
+                if second.is_empty() {
+                    return None;
+                }
+
+                Some(BaseLanguage::Iana(second.to_string()))
+            }
+            "x" | "X" => {
+                let second = parts.next()?;
+                if second.len() > 8 || second.is_empty() {
+                    return None;
+                }
+
+                let mut code = [0; 8];
+                code[..second.len()].copy_from_slice(second.as_bytes());
+                Some(BaseLanguage::Unregistered(code))
+            }
+            _ if first.len() == 2 => {
+                let mut code = [0; 2];
+                code.copy_from_slice(first.as_bytes());
+                Some(BaseLanguage::Iso639_1(code))
+            }
+            _ => None,
+        }
+    }
+
+    /// Get the language's extensions.
+    pub fn extensions(&'a self) -> impl Iterator<Item = &'a str> + 'a {
+        self.0
+            .split('-')
+            .enumerate()
+            .filter_map(|(i, e)| {
+                if i == 0 && ["x", "X", "i", "I"].contains(&e) {
+                    None
+                } else {
+                    Some(e)
+                }
+            })
+            .skip(1)
+    }
+
+    /// Get the fallback locale for a locale.
+    pub fn fallback(&self) -> Option<LocaleCode> {
+        match self.parse_base()? {
+            BaseLanguage::Iso639_1(code) => match &code {
+                b"af" => Some("af-ZA"),
+                b"bg" => Some("bg-BG"),
+                b"ca" => Some("ca-AD"),
+                b"cs" => Some("cs-CZ"),
+                b"da" => Some("da-DK"),
+                b"de" => Some("de-DE"),
+                b"el" => Some("el-GR"),
+                b"en" => Some("en-US"),
+                b"es" => Some("es-ES"),
+                b"et" => Some("et-EE"),
+                b"fa" => Some("fa-IR"),
+                b"fi" => Some("fi-FI"),
+                b"fr" => Some("fr-FR"),
+                b"he" => Some("he-IL"),
+                b"hr" => Some("hr-HR"),
+                b"hu" => Some("hu-HU"),
+                b"is" => Some("is-IS"),
+                b"it" => Some("it-IT"),
+                b"ja" => Some("ja-JP"),
+                b"km" => Some("km-KH"),
+                b"ko" => Some("ko-KR"),
+                b"lt" => Some("lt-LT"),
+                b"lv" => Some("lv-LV"),
+                b"mn" => Some("mn-MN"),
+                b"nb" => Some("nb-NO"),
+                b"nl" => Some("nl-NL"),
+                b"nn" => Some("nn-NO"),
+                b"pl" => Some("pl-PL"),
+                b"pt" => Some("pt-PT"),
+                b"ro" => Some("ro-RO"),
+                b"ru" => Some("ru-RU"),
+                b"sk" => Some("sk-SK"),
+                b"sl" => Some("sl-SI"),
+                b"sr" => Some("sr-RS"),
+                b"sv" => Some("sv-SE"),
+                b"th" => Some("th-TH"),
+                b"tr" => Some("tr-TR"),
+                b"uk" => Some("uk-UA"),
+                b"vi" => Some("vi-VN"),
+                b"zh" => Some("zh-CN"),
+                _ => None,
+            }
+            .map(ToString::to_string)
+            .map(LocaleCode)
+            .filter(|f| f != self),
+            _ => None,
+        }
+    }
+}
+
+/// The base language in a [`LocaleCode`].
+pub enum BaseLanguage {
+    /// A language code.
+    Iso639_1([u8; 2]),
+    /// An IANA language code.
+    Iana(String),
+    /// An unregistered / experimental language code.
+    Unregistered([u8; 8]),
+}
+
+impl BaseLanguage {
+    /// Get the language code.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Iso639_1(code) => std::str::from_utf8(code).unwrap(),
+            Self::Iana(code) => code,
+            Self::Unregistered(code) => std::str::from_utf8(code).unwrap(),
+        }
+    }
+}
+
 /// How the citations are displayed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1627,6 +1756,53 @@ pub struct Locale {
     pub style_options: Option<LocaleOptions>,
 }
 
+impl Locale {
+    /// Get a term translation.
+    pub fn term(&self, term: Term, form: TermForm) -> Option<&LocalizedTerm> {
+        self.terms.as_ref().and_then(|terms| {
+            terms.terms.iter().find(|t| t.name == term && t.form == form)
+        })
+    }
+
+    /// Check whether the locale has any ordinal terms.
+    pub fn has_ordinals(&self) -> bool {
+        self.terms
+            .as_ref()
+            .map(|terms| terms.terms.iter().any(|t| t.name.is_ordinal()))
+            .unwrap_or_default()
+    }
+
+    /// Check whether the locale defaults to legacy 1.0 behavior.
+    pub fn uses_legacy_behavior(&self) -> bool {
+        // Must not define "OtherTerm::Ordinal"
+        if self
+            .terms
+            .as_ref()
+            .map(|terms| {
+                terms.terms.iter().any(|t| t.name != Term::Other(OtherTerm::Ordinal))
+            })
+            .unwrap_or_default()
+        {
+            return false;
+        };
+
+        // Contains OtherTerm::OrdinalN(0) - OtherTerm::OrdinalN(4)
+        std::iter::successors(Some(0), |n: &u8| n.checked_add(1))
+            .take(4)
+            .all(|n| {
+                self.terms
+                    .as_ref()
+                    .map(|terms| {
+                        terms
+                            .terms
+                            .iter()
+                            .all(|t| t.name != Term::Other(OtherTerm::OrdinalN(n)))
+                    })
+                    .unwrap_or_default()
+            })
+    }
+}
+
 impl From<LocaleFile> for Locale {
     fn from(file: LocaleFile) -> Self {
         Self {
@@ -1739,13 +1915,13 @@ pub enum TermForm {
 
 impl TermForm {
     /// Which form is the next fallback if this form is not available.
-    pub const fn fallback(self) -> Self {
+    pub const fn fallback(self) -> Option<Self> {
         match self {
-            Self::Long => Self::Long,
-            Self::Short => Self::Long,
-            Self::Verb => Self::Long,
-            Self::VerbShort => Self::Verb,
-            Self::Symbol => Self::Short,
+            Self::Long => None,
+            Self::Short => Some(Self::Long),
+            Self::Verb => Some(Self::Long),
+            Self::VerbShort => Some(Self::Verb),
+            Self::Symbol => Some(Self::Short),
         }
     }
 }
@@ -1821,6 +1997,28 @@ pub struct Formatting {
     /// Choose vertical alignment.
     #[serde(rename = "@vertical-align")]
     pub vertical_align: Option<VerticalAlign>,
+}
+
+impl Formatting {
+    /// Check if this formatting is empty.
+    pub fn is_empty(&self) -> bool {
+        self.font_style.is_none()
+            && self.font_variant.is_none()
+            && self.font_weight.is_none()
+            && self.text_decoration.is_none()
+            && self.vertical_align.is_none()
+    }
+
+    /// Merge with a base formatting.
+    pub fn apply(self, base: Self) -> Self {
+        Self {
+            font_style: self.font_style.or(base.font_style),
+            font_variant: self.font_variant.or(base.font_variant),
+            font_weight: self.font_weight.or(base.font_weight),
+            text_decoration: self.text_decoration.or(base.text_decoration),
+            vertical_align: self.vertical_align.or(base.vertical_align),
+        }
+    }
 }
 
 /// Font style.

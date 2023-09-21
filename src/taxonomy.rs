@@ -384,12 +384,18 @@ impl Term {
 
     /// Whether this is an ordinal term.
     pub const fn is_ordinal(self) -> bool {
-        matches!(
-            self,
-            Self::Other(
-                OtherTerm::Ordinal | OtherTerm::OrdinalN(_) | OtherTerm::LongOrdinal(_)
-            )
-        )
+        match self {
+            Self::Other(other) => other.is_ordinal(),
+            _ => false,
+        }
+    }
+
+    /// Whether this is a numbered ordinal term.
+    pub const fn is_n_ordinal(self) -> bool {
+        match self {
+            Self::Other(other) => other.is_n_ordinal(),
+            _ => false,
+        }
     }
 
     /// Whether this is a gendered term.
@@ -654,7 +660,9 @@ pub enum OtherTerm {
 
     // Ordinals
     Ordinal,
+    /// Between 0 and 99.
     OrdinalN(u8),
+    /// Between 0 and 10.
     LongOrdinal(u8),
 
     // Punctuation
@@ -728,6 +736,18 @@ pub enum OtherTerm {
     TelevisionSeriesEpisode,
     Video,
     WorkingPaper,
+}
+
+impl OtherTerm {
+    /// Whether this is a numbered ordinal term.
+    pub const fn is_n_ordinal(self) -> bool {
+        matches!(self, Self::OrdinalN(_) | Self::LongOrdinal(_))
+    }
+
+    /// Whether this is an ordinal term.
+    pub const fn is_ordinal(self) -> bool {
+        matches!(self, Self::Ordinal | Self::OrdinalN(_) | Self::LongOrdinal(_))
+    }
 }
 
 impl FromStr for OtherTerm {
