@@ -19,6 +19,18 @@ pub enum Variable {
     Name(NameVariable),
 }
 
+impl Variable {
+    /// Check if the variable starts with `number-of-` to control contextual
+    /// label behavior.
+    pub const fn is_number_of_variable(self) -> bool {
+        if let Self::Number(v) = self {
+            v.is_number_of_variable()
+        } else {
+            false
+        }
+    }
+}
+
 /// The set of variables with no other attributes.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -232,6 +244,14 @@ pub enum NumberVariable {
     /// volume 2 of a book); Use volume-title for the title of the volume, if
     /// any.
     Volume,
+}
+
+impl NumberVariable {
+    /// Check if the variable starts with `number-of-` to control contextual
+    /// label behavior.
+    pub const fn is_number_of_variable(self) -> bool {
+        matches!(self, Self::NumberOfPages | Self::NumberOfVolumes)
+    }
 }
 
 impl From<NumberVariable> for Variable {

@@ -1812,6 +1812,11 @@ impl<'a> OrdinalLookup<'a> {
         Self { terms, legacy_behavior }
     }
 
+    /// Create an empty lookup that will never return matches.
+    pub const fn empty() -> Self {
+        Self { terms: Vec::new(), legacy_behavior: false }
+    }
+
     /// Look up a short ordinal for a number.
     pub fn lookup(&self, n: i32) -> Option<&'a str> {
         let mut best_match: Option<&'a LocalizedTerm> = None;
@@ -1884,17 +1889,24 @@ impl<'a> OrdinalLookup<'a> {
         best_match.and_then(|t| t.single().or_else(|| t.multiple()))
     }
 
-    /// Look up a long ordinal for a number. Includes fallback to short
-    /// ordinals.
+    /// Look up a long ordinal for a number. Does not include fallback to
+    /// regular ordinals.
     pub fn lookup_long(&self, n: i32) -> Option<&'a str> {
         self.terms
             .iter()
             .find(|t| {
                 let Term::Other(OtherTerm::LongOrdinal(o)) = t.name else { return false };
-                n == o as i32
+                if n > 0 && n <= 10 {
+                    n == o as i32
+                } else {
+                    match t.match_ {
+                        Some(OrdinalMatch::LastTwoDigits) | None => n % 100 == o as i32,
+                        Some(OrdinalMatch::WholeNumber) => n == o as i32,
+                        _ => false,
+                    }
+                }
             })
             .and_then(|t| t.single().or_else(|| t.multiple()))
-            .or_else(|| self.lookup(n))
     }
 }
 
