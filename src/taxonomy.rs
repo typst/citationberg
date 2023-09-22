@@ -768,6 +768,36 @@ impl OtherTerm {
     pub const fn is_ordinal(self) -> bool {
         matches!(self, Self::Ordinal | Self::OrdinalN(_) | Self::LongOrdinal(_))
     }
+
+    /// Get the month for a number between 0 and 11.
+    pub const fn month(i: u8) -> Option<Self> {
+        match i {
+            0 => Some(Self::Month01),
+            1 => Some(Self::Month02),
+            2 => Some(Self::Month03),
+            3 => Some(Self::Month04),
+            4 => Some(Self::Month05),
+            5 => Some(Self::Month06),
+            6 => Some(Self::Month07),
+            7 => Some(Self::Month08),
+            8 => Some(Self::Month09),
+            9 => Some(Self::Month10),
+            10 => Some(Self::Month11),
+            11 => Some(Self::Month12),
+            _ => None,
+        }
+    }
+
+    /// Get the season for a number between 0 and 3.
+    pub const fn season(i: u8) -> Option<Self> {
+        match i {
+            0 => Some(Self::Season01),
+            1 => Some(Self::Season02),
+            2 => Some(Self::Season03),
+            3 => Some(Self::Season04),
+            _ => None,
+        }
+    }
 }
 
 impl FromStr for OtherTerm {

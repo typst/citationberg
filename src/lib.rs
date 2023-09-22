@@ -967,7 +967,7 @@ impl From<Term> for TextTarget {
 pub struct Date {
     /// The date to format.
     #[serde(rename = "@variable")]
-    pub variable: Variable,
+    pub variable: DateVariable,
     /// How the localized date should be formatted.
     #[serde(rename = "@form")]
     pub form: Option<DateForm>,
@@ -998,6 +998,13 @@ pub struct Date {
 to_formatting!(Date);
 to_affixes!(Date);
 
+impl Date {
+    /// Whether this is a localized or a standalone date.
+    pub const fn is_localized(&self) -> bool {
+        self.form.is_some()
+    }
+}
+
 /// Localized date formats.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -1017,6 +1024,18 @@ pub enum DateParts {
     YearMonth,
     #[default]
     YearMonthDay,
+}
+
+impl DateParts {
+    /// Check if the date shall contain a month.
+    pub const fn has_month(self) -> bool {
+        matches!(self, Self::YearMonth | Self::YearMonthDay)
+    }
+
+    /// Check if the date shall contain a day.
+    pub const fn has_day(self) -> bool {
+        matches!(self, Self::YearMonthDay)
+    }
 }
 
 /// Override the default date parts.
@@ -1055,8 +1074,8 @@ impl DatePart {
     pub const DEFAULT_DELIMITER: &str = "–";
 
     /// Retrieve the form.
-    pub fn form(&self) -> Option<DateStrongAnyForm> {
-        DateStrongAnyForm::for_name(self.name, self.form?)
+    pub fn form(&self) -> DateStrongAnyForm {
+        DateStrongAnyForm::for_name(self.name, self.form)
     }
 }
 
@@ -1098,52 +1117,59 @@ pub enum DateStrongAnyForm {
 impl DateStrongAnyForm {
     /// Get a strongly typed date form for a name. Must return `Some` for valid
     /// CSL files.
-    pub fn for_name(name: DatePartName, form: DateAnyForm) -> Option<Self> {
-        Some(match name {
-            DatePartName::Day => Self::Day(form.form_for_day()?),
-            DatePartName::Month => Self::Month(form.form_for_month()?),
-            DatePartName::Year => Self::Year(form.form_for_year()?),
-        })
+    pub fn for_name(name: DatePartName, form: Option<DateAnyForm>) -> Self {
+        match name {
+            DatePartName::Day => Self::Day(
+                form.map(DateAnyForm::form_for_day)
+                    .unwrap_or_else(DateDayForm::default),
+            ),
+            DatePartName::Month => Self::Month(
+                form.map(DateAnyForm::form_for_month)
+                    .unwrap_or_else(DateMonthForm::default),
+            ),
+            DatePartName::Year => Self::Year(
+                form.map(DateAnyForm::form_for_year)
+                    .unwrap_or_else(LongShortForm::default),
+            ),
+        }
     }
 }
 
 impl DateAnyForm {
     /// Retrieve the form for a day.
-    pub fn form_for_day(&self) -> Option<DateDayForm> {
+    pub fn form_for_day(self) -> DateDayForm {
         match self {
-            Self::Numeric => Some(DateDayForm::Numeric),
-            Self::NumericLeadingZeros => Some(DateDayForm::NumericLeadingZeros),
-            Self::Ordinal => Some(DateDayForm::Ordinal),
-            _ => None,
+            Self::NumericLeadingZeros => DateDayForm::NumericLeadingZeros,
+            Self::Ordinal => DateDayForm::Ordinal,
+            _ => DateDayForm::default(),
         }
     }
 
     /// Retrieve the form for a month.
-    pub fn form_for_month(&self) -> Option<DateMonthForm> {
+    pub fn form_for_month(self) -> DateMonthForm {
         match self {
-            Self::Long => Some(DateMonthForm::Long),
-            Self::Short => Some(DateMonthForm::Short),
-            Self::Numeric => Some(DateMonthForm::Numeric),
-            Self::NumericLeadingZeros => Some(DateMonthForm::NumericLeadingZeros),
-            _ => None,
+            Self::Short => DateMonthForm::Short,
+            Self::Numeric => DateMonthForm::Numeric,
+            Self::NumericLeadingZeros => DateMonthForm::NumericLeadingZeros,
+            _ => DateMonthForm::default(),
         }
     }
 
     /// Retrieve the form for a year.
-    pub fn form_for_year(&self) -> Option<LongShortForm> {
+    pub fn form_for_year(self) -> LongShortForm {
         match self {
-            Self::Long => Some(LongShortForm::Long),
-            Self::Short => Some(LongShortForm::Short),
-            _ => None,
+            Self::Short => LongShortForm::Short,
+            _ => LongShortForm::default(),
         }
     }
 }
 
 /// How a day is formatted.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateDayForm {
     /// “1”
+    #[default]
     Numeric,
     /// “01”
     NumericLeadingZeros,
@@ -1152,10 +1178,11 @@ pub enum DateDayForm {
 }
 
 /// How a month is formatted.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateMonthForm {
     /// “January”
+    #[default]
     Long,
     /// “Jan.”
     Short,
@@ -1745,7 +1772,7 @@ pub struct LocaleFile {
     pub terms: Option<Terms>,
     /// How to format dates in the locale file.
     #[serde(default)]
-    pub date: Vec<DateLocale>,
+    pub date: Vec<Date>,
     /// Style options for the locale.
     pub style_options: Option<LocaleOptions>,
 }
@@ -1764,7 +1791,7 @@ pub struct Locale {
     pub terms: Option<Terms>,
     /// How to format dates in the locale file.
     #[serde(default)]
-    pub date: Vec<DateLocale>,
+    pub date: Vec<Date>,
     /// Style options for the locale.
     pub style_options: Option<LocaleOptions>,
 }
@@ -2054,21 +2081,6 @@ pub enum OrdinalMatch {
 pub enum GrammarGender {
     Feminine,
     Masculine,
-}
-
-/// Formats a date in a locale.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct DateLocale {
-    /// How the localized date should be formatted.
-    #[serde(rename = "@form")]
-    pub form: Option<DateForm>,
-    /// Which parts of the localized date should be included.
-    #[serde(rename = "@date-parts")]
-    pub parts: Option<DateParts>,
-    /// Override the default date parts. Also specifies the order of the parts
-    /// if `form` is `None`.
-    #[serde(rename = "$value")]
-    pub children: Vec<DatePart>,
 }
 
 /// Options for the locale.
