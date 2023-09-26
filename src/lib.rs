@@ -4,7 +4,6 @@
 #![deny(unsafe_code)]
 
 use std::num::NonZeroUsize;
-use std::ops::{Deref, Not};
 
 use serde::Deserialize;
 
@@ -17,55 +16,36 @@ pub mod taxonomy;
 
 const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(2048);
 
-/// A boolean in CSL.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Boolean(bool);
-
-impl Deref for Boolean {
-    type Target = bool;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+fn deserialize_bool<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<bool, D::Error> {
+    let res = String::deserialize(deserializer)?;
+    Ok(res.to_ascii_lowercase() == "true")
 }
 
-impl<'de> Deserialize<'de> for Boolean {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Self, D::Error> {
-        let res = String::deserialize(deserializer)?;
-        Ok(Self(res.to_ascii_lowercase() == "true"))
-    }
+fn deserialize_bool_option<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<bool>, D::Error> {
+    let res = Option::<String>::deserialize(deserializer)?;
+    Ok(res.map(|s| s.to_ascii_lowercase() == "true"))
 }
 
-impl Not for Boolean {
-    type Output = Self;
-
-    fn not(self) -> Self::Output {
-        Self(!self.0)
-    }
+fn deserialize_u32<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<u32, D::Error> {
+    let res = String::deserialize(deserializer)?;
+    let res = res.trim().parse().map_err(serde::de::Error::custom)?;
+    Ok(res)
 }
 
-/// A positive integer in CSL.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
-pub struct NonNegativeInteger(u32);
-
-impl Deref for NonNegativeInteger {
-    type Target = u32;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<'de> Deserialize<'de> for NonNegativeInteger {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Self, D::Error> {
-        let res = String::deserialize(deserializer)?;
-        let res = res.trim().parse().map_err(serde::de::Error::custom)?;
-        Ok(Self(res))
-    }
+fn deserialize_u32_option<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u32>, D::Error> {
+    let res = Option::<String>::deserialize(deserializer)?;
+    let res = res
+        .map(|s| s.trim().parse().map_err(serde::de::Error::custom))
+        .transpose()?;
+    Ok(res)
 }
 
 /// Allow every struct with formatting properties to convert to a `Formatting`.
@@ -189,9 +169,10 @@ pub struct IndependentStyleSettings {
     /// Defaults to `true`.
     #[serde(
         rename = "@initialize-with-hyphen",
-        default = "IndependentStyleSettings::default_initialize_with_hyphen"
+        default = "IndependentStyleSettings::default_initialize_with_hyphen",
+        deserialize_with = "deserialize_bool"
     )]
-    pub initialize_with_hyphen: Boolean,
+    pub initialize_with_hyphen: bool,
     /// Specifies how to reformat page ranges.
     #[serde(rename = "@page-range-format")]
     pub page_range_format: Option<PageRangeFormat>,
@@ -205,8 +186,8 @@ pub struct IndependentStyleSettings {
 
 impl IndependentStyleSettings {
     /// Return the default value for `initialize_with_hyphen`.
-    pub const fn default_initialize_with_hyphen() -> Boolean {
-        Boolean(true)
+    pub const fn default_initialize_with_hyphen() -> bool {
+        true
     }
 }
 
@@ -584,21 +565,33 @@ pub struct Citation {
     /// Expand names that are ambiguous in short form.
     ///
     /// Default: `false`
-    #[serde(rename = "@disambiguate-add-givenname", default)]
-    pub disambiguate_add_givenname: Boolean,
+    #[serde(
+        rename = "@disambiguate-add-givenname",
+        default,
+        deserialize_with = "deserialize_bool"
+    )]
+    pub disambiguate_add_givenname: bool,
     /// When to expand names that are ambiguous in short form.
     #[serde(rename = "@disambiguate-add-givenname-rule")]
     pub givenname_disambiguation_rule: Option<DisambiguationRule>,
     /// Disambiguate by adding more names that would otherwise be hidden by et al.
     ///
     /// Default: `false`
-    #[serde(rename = "@disambiguate-add-names", default)]
-    pub disambiguate_add_names: Boolean,
+    #[serde(
+        rename = "@disambiguate-add-names",
+        default,
+        deserialize_with = "deserialize_bool"
+    )]
+    pub disambiguate_add_names: bool,
     /// Disambiguate by adding an alphabetical suffix to the year.
     ///
     /// Default: `false`
-    #[serde(rename = "@disambiguate-add-year-suffix", default)]
-    pub disambiguate_add_year_suffix: Boolean,
+    #[serde(
+        rename = "@disambiguate-add-year-suffix",
+        default,
+        deserialize_with = "deserialize_bool"
+    )]
+    pub disambiguate_add_year_suffix: bool,
     /// Group items in cite by name.
     #[serde(rename = "@cite-group-delimiter")]
     pub cite_group_delimiter: Option<String>,
@@ -616,9 +609,10 @@ pub struct Citation {
     /// Default: `5`
     #[serde(
         rename = "@near-note-distance",
-        default = "Citation::default_near_note_distance"
+        default = "Citation::default_near_note_distance",
+        deserialize_with = "deserialize_u32"
     )]
-    pub near_note_distance: NonNegativeInteger,
+    pub near_note_distance: u32,
     /// Options for the names within.
     #[serde(flatten)]
     pub name_options: InheritableNameOptions,
@@ -646,8 +640,8 @@ impl Citation {
     }
 
     /// Return the default `near_note_distance`.
-    pub const fn default_near_note_distance() -> NonNegativeInteger {
-        NonNegativeInteger(5)
+    pub const fn default_near_note_distance() -> u32 {
+        5
     }
 }
 
@@ -692,8 +686,8 @@ pub struct Bibliography {
     /// Render the bibliography in a hanging indent.
     ///
     /// Default: `false`
-    #[serde(rename = "@hanging-indent", default)]
-    pub hanging_indent: Boolean,
+    #[serde(rename = "@hanging-indent", default, deserialize_with = "deserialize_bool")]
+    pub hanging_indent: bool,
     /// When set, the second field is aligned.
     #[serde(rename = "@second-field-align")]
     pub second_field_align: Option<SecondFieldAlign>,
@@ -761,15 +755,21 @@ pub enum SortKey {
         name: String,
         /// Override `[InheritedNameOptions::et_al_min]` and
         /// `[InheritedNameOptions::et_al_subsequent_min]` for macros.
-        #[serde(rename = "@names-min")]
-        names_min: Option<NonNegativeInteger>,
+        #[serde(rename = "@names-min", deserialize_with = "deserialize_u32_option")]
+        names_min: Option<u32>,
         /// Override `[InheritedNameOptions::et_al_use_first]` and
         /// `[InheritedNameOptions::et_al_subsequent_use_first]` for macros.
-        #[serde(rename = "@names-use-first")]
-        names_use_first: Option<NonNegativeInteger>,
+        #[serde(
+            rename = "@names-use-first",
+            deserialize_with = "deserialize_u32_option"
+        )]
+        names_use_first: Option<u32>,
         /// Override `[InheritedNameOptions::et_al_use_last]` for macros.
-        #[serde(rename = "@names-use-last")]
-        names_use_last: Option<Boolean>,
+        #[serde(
+            rename = "@names-use-last",
+            deserialize_with = "deserialize_bool_option"
+        )]
+        names_use_last: Option<bool>,
         /// In which direction to sort.
         #[serde(rename = "@sort", default)]
         sort_direction: SortDirection,
@@ -891,13 +891,13 @@ pub struct Text {
     /// Whether to wrap this text in quotes.
     ///
     /// Default: `false`
-    #[serde(rename = "@quotes", default)]
-    pub quotes: Boolean,
+    #[serde(rename = "@quotes", default, deserialize_with = "deserialize_bool")]
+    pub quotes: bool,
     /// Remove periods from the output.
     ///
     /// Default: `false`
-    #[serde(rename = "@strip-periods", default)]
-    pub strip_periods: Boolean,
+    #[serde(rename = "@strip-periods", default, deserialize_with = "deserialize_bool")]
+    pub strip_periods: bool,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
@@ -934,8 +934,8 @@ pub enum TextTarget {
         #[serde(rename = "@form", default)]
         form: TermForm,
         /// Whether the term is pluralized.
-        #[serde(rename = "@plural", default)]
-        plural: Boolean,
+        #[serde(rename = "@plural", default, deserialize_with = "deserialize_bool")]
+        plural: bool,
     },
     /// Prints a given string.
     Value {
@@ -956,7 +956,7 @@ impl From<Term> for TextTarget {
         Self::Term {
             term: value,
             form: TermForm::default(),
-            plural: Boolean::default(),
+            plural: bool::default(),
         }
     }
 }
@@ -967,7 +967,7 @@ impl From<Term> for TextTarget {
 pub struct Date {
     /// The date to format.
     #[serde(rename = "@variable")]
-    pub variable: DateVariable,
+    pub variable: Option<DateVariable>,
     /// How the localized date should be formatted.
     #[serde(rename = "@form")]
     pub form: Option<DateForm>,
@@ -1059,8 +1059,8 @@ pub struct DatePart {
     /// Remove periods from the date part.
     ///
     /// Default: `false`
-    #[serde(rename = "@strip-periods", default)]
-    pub strip_periods: Boolean,
+    #[serde(rename = "@strip-periods", default, deserialize_with = "deserialize_bool")]
+    pub strip_periods: bool,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
@@ -1252,9 +1252,11 @@ pub struct Names {
     #[serde(rename = "@variable")]
     pub variable: Vec<NameVariable>,
     /// How the names are formatted.
-    pub name: Option<Name>,
+    #[serde(default)]
+    pub name: Name,
     /// Configuration of the et al. abbreviation.
-    pub et_al: Option<EtAl>,
+    #[serde(default)]
+    pub et_al: EtAl,
     /// Substitutions in case the variable is empty.
     pub substitute: Option<Substitute>,
     /// Label for the names.
@@ -1291,7 +1293,7 @@ pub struct Name {
     pub form: NameForm,
     /// Name parts for formatting for the given and family name.
     #[serde(rename = "name-part")]
-    pub parts: Vec<NamePart>,
+    parts: Vec<NamePart>,
     /// Options for this name.
     #[serde(flatten)]
     pub options: InheritableNameOptions,
@@ -1319,6 +1321,18 @@ impl Default for Name {
     }
 }
 
+impl Name {
+    /// Retrieve [`NamePart`] configuration for the given name.
+    pub fn name_part_given(&self) -> Option<&NamePart> {
+        self.parts.iter().find(|p| p.name == NamePartName::Given)
+    }
+
+    /// Retrieve [`NamePart`] configuration for the family name.
+    pub fn name_part_family(&self) -> Option<&NamePart> {
+        self.parts.iter().find(|p| p.name == NamePartName::Family)
+    }
+}
+
 /// Global configuration of how to print names.
 #[derive(Debug, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
 #[serde(default)]
@@ -1339,27 +1353,33 @@ pub struct InheritableNameOptions {
     #[serde(rename = "@delimiter-precedes-last")]
     pub delimiter_precedes_last: Option<DelimiterBehavior>,
     /// Minimum number of names to use et al.
-    #[serde(rename = "@et-al-min")]
-    pub et_al_min: Option<NonNegativeInteger>,
+    #[serde(rename = "@et-al-min", deserialize_with = "deserialize_u32_option")]
+    pub et_al_min: Option<u32>,
     /// Maximum number of names to use before et al.
-    #[serde(rename = "@et-al-use-first")]
-    pub et_al_use_first: Option<NonNegativeInteger>,
+    #[serde(rename = "@et-al-use-first", deserialize_with = "deserialize_u32_option")]
+    pub et_al_use_first: Option<u32>,
     /// Minimum number of names to use et al. for repeated citations.
-    #[serde(rename = "@et-al-subsequent-min")]
-    pub et_al_subsequent_min: Option<NonNegativeInteger>,
+    #[serde(
+        rename = "@et-al-subsequent-min",
+        deserialize_with = "deserialize_u32_option"
+    )]
+    pub et_al_subsequent_min: Option<u32>,
     /// Maximum number of names to use before et al. for repeated citations.
-    #[serde(rename = "@et-al-subsequent-use-first")]
-    pub et_al_subsequent_use_first: Option<NonNegativeInteger>,
+    #[serde(
+        rename = "@et-al-subsequent-use-first",
+        deserialize_with = "deserialize_u32_option"
+    )]
+    pub et_al_subsequent_use_first: Option<u32>,
     /// Whether to use the last name in the author list when there are at least
     /// `et_al_min` names.
-    #[serde(rename = "@et-al-use-last")]
-    pub et_al_use_last: Option<Boolean>,
+    #[serde(rename = "@et-al-use-last", deserialize_with = "deserialize_bool_option")]
+    pub et_al_use_last: Option<bool>,
     /// Which name parts to display for personal names.
     #[serde(rename = "@name-form")]
     pub name_form: Option<NameForm>,
     /// Whether to initialize the first name if `initialize-with` is Some.
-    #[serde(rename = "@initialize")]
-    pub initialize: Option<Boolean>,
+    #[serde(rename = "@initialize", deserialize_with = "deserialize_bool_option")]
+    pub initialize: Option<bool>,
     /// String to initialize the first name with.
     #[serde(rename = "@initialize-with")]
     pub initialize_with: Option<String>,
@@ -1457,9 +1477,12 @@ pub enum NameAsSortOrder {
 }
 
 /// How to format a given name part.
-#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct NamePart {
+    /// Which name part this applies to.
+    #[serde(rename = "@name")]
+    pub name: NamePartName,
     /// Override formatting style.
     #[serde(flatten)]
     pub formatting: Formatting,
@@ -1474,8 +1497,18 @@ pub struct NamePart {
 to_formatting!(NamePart);
 to_affixes!(NamePart);
 
+/// Which part of the name a [`NamePart`] applies to.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NamePartName {
+    /// The given name.
+    Given,
+    /// The family name.
+    Family,
+}
+
 /// Configure the et al. abbreviation.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
 pub struct EtAl {
     /// Which term to use.
     #[serde(rename = "@term", default)]
@@ -1548,8 +1581,8 @@ pub struct VariablelessLabel {
     /// Remove periods from the output.
     ///
     /// Default: `false`
-    #[serde(rename = "strip-periods", default)]
-    pub strip_periods: Boolean,
+    #[serde(rename = "strip-periods", default, deserialize_with = "deserialize_bool")]
+    pub strip_periods: bool,
 }
 
 to_formatting!(VariablelessLabel);
@@ -1622,6 +1655,16 @@ pub struct Choose {
     /// The formatting instructions to use if no branch matches.
     #[serde(rename = "else")]
     pub otherwise: Option<ElseBranch>,
+    /// The delimiter between rendering elements in the chosen branch.
+    #[serde(rename = "@delimiter")]
+    pub delimiter: Option<String>,
+}
+
+impl Choose {
+    /// Return an iterator over all branches with a condition.
+    pub fn branches(&self) -> impl Iterator<Item = &ChooseBranch> {
+        std::iter::once(&self.if_).chain(self.else_if.iter())
+    }
 }
 
 /// A single branch of a conditional group.
@@ -1629,8 +1672,12 @@ pub struct Choose {
 pub struct ChooseBranch {
     /// Other than this choose, two elements would result in the same
     /// rendering.
-    #[serde(rename = "@disambiguate")]
-    pub disambiguate: Option<Boolean>,
+    #[serde(
+        rename = "@disambiguate",
+        deserialize_with = "deserialize_bool_option",
+        default
+    )]
+    pub disambiguate: Option<bool>,
     /// The variable contains numeric data.
     #[serde(rename = "@is-numeric")]
     /// The variable contains an approximate date.
@@ -1665,7 +1712,7 @@ impl ChooseBranch {
     /// here.
     pub fn test(&self) -> Option<ChooseTest> {
         if let Some(disambiguate) = self.disambiguate {
-            if !*disambiguate {
+            if !disambiguate {
                 None
             } else {
                 Some(ChooseTest::Disambiguate)
@@ -1692,7 +1739,7 @@ pub struct ElseBranch {
     /// The formatting instructions.
     /// TODO: May need to accept <cs:layout>.
     #[serde(rename = "$value")]
-    children: Vec<LayoutRenderingElement>,
+    pub children: Vec<LayoutRenderingElement>,
 }
 
 /// A single test in a conditional group.
@@ -1743,6 +1790,17 @@ pub enum ChooseMatch {
     Any,
     /// No test must match.
     None,
+}
+
+impl ChooseMatch {
+    /// Check whether the iterator of tests is true for this match type.
+    pub fn test(self, mut tests: impl Iterator<Item = bool>) -> bool {
+        match self {
+            Self::All => tests.all(|t| t),
+            Self::Any => tests.any(|t| t),
+            Self::None => tests.all(|t| !t),
+        }
+    }
 }
 
 /// A reusable set of formatting instructions.
@@ -2089,13 +2147,21 @@ pub struct LocaleOptions {
     /// Only use ordinals for the first day in a month.
     ///
     /// Default: `false`
-    #[serde(rename = "@limit-day-ordinals-to-day-1")]
-    pub limit_day_ordinals_to_day_1: Option<Boolean>,
+    #[serde(
+        rename = "@limit-day-ordinals-to-day-1",
+        deserialize_with = "deserialize_bool_option",
+        default
+    )]
+    pub limit_day_ordinals_to_day_1: Option<bool>,
     /// Whether to place punctuation inside of quotation marks.
     ///
     /// Default: `false`
-    #[serde(rename = "@punctuation-in-quote")]
-    pub punctuation_in_quote: Option<Boolean>,
+    #[serde(
+        rename = "@punctuation-in-quote",
+        deserialize_with = "deserialize_bool_option",
+        default
+    )]
+    pub punctuation_in_quote: Option<bool>,
 }
 
 /// Formatting properties.
