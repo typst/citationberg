@@ -1263,7 +1263,7 @@ pub struct Names {
     pub label: Option<VariablelessLabel>,
     /// Delimiter between names.
     #[serde(rename = "@delimiter")]
-    pub delimiter: Option<String>,
+    delimiter: Option<String>,
     /// Options for the names within.
     #[serde(flatten)]
     pub options: InheritableNameOptions,
@@ -1278,25 +1278,35 @@ pub struct Names {
     pub display: Option<Display>,
 }
 
+impl Names {
+    /// Return the delimiter given some name options.
+    pub fn delimiter<'a>(&'a self, name_options: &'a InheritableNameOptions) -> &'a str {
+        self.delimiter
+            .as_deref()
+            .or(name_options.name_delimiter.as_deref())
+            .unwrap_or_default()
+    }
+}
+
 to_formatting!(Names);
 to_affixes!(Names);
 
 /// Configuration of how to print names.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case", default)]
 pub struct Name {
     /// Delimiter between names.
     #[serde(rename = "@delimiter")]
-    pub delimiter: String,
+    delimiter: Option<String>,
     /// Which name parts to display for personal names.
-    #[serde(rename = "@form", default)]
-    pub form: NameForm,
+    #[serde(rename = "@form")]
+    form: Option<NameForm>,
     /// Name parts for formatting for the given and family name.
     #[serde(rename = "name-part")]
     parts: Vec<NamePart>,
     /// Options for this name.
     #[serde(flatten)]
-    pub options: InheritableNameOptions,
+    options: InheritableNameOptions,
     /// Override formatting style.
     #[serde(flatten)]
     pub formatting: Formatting,
@@ -1308,19 +1318,6 @@ pub struct Name {
 to_formatting!(Name);
 to_affixes!(Name);
 
-impl Default for Name {
-    fn default() -> Self {
-        Self {
-            delimiter: ", ".to_string(),
-            form: NameForm::default(),
-            parts: Vec::default(),
-            options: InheritableNameOptions::default(),
-            formatting: Formatting::default(),
-            affixes: Affixes::default(),
-        }
-    }
-}
-
 impl Name {
     /// Retrieve [`NamePart`] configuration for the given name.
     pub fn name_part_given(&self) -> Option<&NamePart> {
@@ -1330,6 +1327,42 @@ impl Name {
     /// Retrieve [`NamePart`] configuration for the family name.
     pub fn name_part_family(&self) -> Option<&NamePart> {
         self.parts.iter().find(|p| p.name == NamePartName::Family)
+    }
+
+    /// Retrieve the [`NameOptions`] for this name.
+    pub fn options<'s>(&'s self, inherited: &'s InheritableNameOptions) -> NameOptions {
+        let applied = inherited.apply(&self.options);
+        NameOptions {
+            and: applied.and,
+            delimiter: self
+                .delimiter
+                .as_deref()
+                .or(inherited.name_delimiter.as_deref())
+                .unwrap_or(", "),
+            delimiter_precedes_et_al: applied
+                .delimiter_precedes_et_al
+                .unwrap_or_default(),
+            delimiter_precedes_last: applied.delimiter_precedes_et_al.unwrap_or_default(),
+            et_al_min: applied.et_al_min,
+            et_al_use_first: applied.et_al_use_first,
+            et_al_subsequent_min: applied.et_al_subsequent_min,
+            et_al_subsequent_use_first: applied.et_al_subsequent_use_first,
+            et_al_use_last: applied.et_al_use_last.unwrap_or_default(),
+            form: self.form.or(inherited.name_form).unwrap_or_default(),
+            initialize: applied.initialize.unwrap_or(true),
+            initialize_with: self
+                .options
+                .initialize_with
+                .as_deref()
+                .or(inherited.initialize_with.as_deref()),
+            name_as_sort_order: applied.name_as_sort_order,
+            sort_separator: self
+                .options
+                .sort_separator
+                .as_deref()
+                .or(inherited.sort_separator.as_deref())
+                .unwrap_or(", "),
+        }
     }
 }
 
@@ -1392,14 +1425,53 @@ pub struct InheritableNameOptions {
     pub sort_separator: Option<String>,
 }
 
+/// Definite name options. Obtain from [`Name::options`] using
+/// [`InheritableNameOptions`].
+pub struct NameOptions<'s> {
+    /// Delimiter between second-to-last and last name.
+    pub and: Option<NameAnd>,
+    /// Delimiter to separate names.
+    pub delimiter: &'s str,
+    /// Delimiter before et al.
+    pub delimiter_precedes_et_al: DelimiterBehavior,
+    /// Whether to use the delimiter before the last name.
+    pub delimiter_precedes_last: DelimiterBehavior,
+    /// Minimum number of names to use et al.
+    pub et_al_min: Option<u32>,
+    /// Maximum number of names to use before et al.
+    pub et_al_use_first: Option<u32>,
+    /// Minimum number of names to use et al. for repeated citations.
+    pub et_al_subsequent_min: Option<u32>,
+    /// Maximum number of names to use before et al. for repeated citations.
+    pub et_al_subsequent_use_first: Option<u32>,
+    /// Whether to use the last name in the author list when there are at least
+    /// `et_al_min` names.
+    pub et_al_use_last: bool,
+    /// Which name parts to display for personal names.
+    pub form: NameForm,
+    /// Whether to initialize the first name if `initialize-with` is Some.
+    pub initialize: bool,
+    /// String to initialize the first name with.
+    pub initialize_with: Option<&'s str>,
+    /// Whether to turn the name around.
+    pub name_as_sort_order: Option<NameAsSortOrder>,
+    /// Delimiter between given name and first name. Only used if
+    /// `name-as-sort-order` is Some.
+    pub sort_separator: &'s str,
+}
+
 impl InheritableNameOptions {
     /// Apply the child options to the parent options.
-    pub fn apply(&self, child: Self) -> Self {
+    pub fn apply(&self, child: &Self) -> Self {
         Self {
             and: child.and.or(self.and),
-            name_delimiter: child.name_delimiter.or_else(|| self.name_delimiter.clone()),
+            name_delimiter: child
+                .name_delimiter
+                .clone()
+                .or_else(|| self.name_delimiter.clone()),
             names_delimiter: child
                 .names_delimiter
+                .clone()
                 .or_else(|| self.names_delimiter.clone()),
             delimiter_precedes_et_al: child
                 .delimiter_precedes_et_al
@@ -1420,9 +1492,13 @@ impl InheritableNameOptions {
             initialize: child.initialize.or(self.initialize),
             initialize_with: child
                 .initialize_with
+                .clone()
                 .or_else(|| self.initialize_with.clone()),
             name_as_sort_order: child.name_as_sort_order.or(self.name_as_sort_order),
-            sort_separator: child.sort_separator.or_else(|| self.sort_separator.clone()),
+            sort_separator: child
+                .sort_separator
+                .clone()
+                .or_else(|| self.sort_separator.clone()),
         }
     }
 }
@@ -1811,6 +1887,7 @@ pub struct CslMacro {
     pub name: String,
     /// The formatting instructions.
     #[serde(rename = "$value")]
+    #[serde(default)]
     pub children: Vec<LayoutRenderingElement>,
 }
 
@@ -1833,6 +1910,14 @@ pub struct LocaleFile {
     pub date: Vec<Date>,
     /// Style options for the locale.
     pub style_options: Option<LocaleOptions>,
+}
+
+impl LocaleFile {
+    /// Create a locale from a XML string.
+    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+        let locale: Self = quick_xml::de::from_str(xml)?;
+        Ok(locale)
+    }
 }
 
 /// Supplemental localization data in a citation style.
