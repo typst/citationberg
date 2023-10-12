@@ -3,7 +3,10 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
-use std::num::NonZeroUsize;
+use std::{
+    fmt::{self, Debug},
+    num::NonZeroUsize,
+};
 
 use serde::Deserialize;
 
@@ -335,22 +338,87 @@ pub enum StyleClass {
 }
 
 /// How to reformat page ranges.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PageRangeFormat {
     /// “321–28”
-    /// Aliases: `chicago-15`
-    #[serde(alias = "chicago-15")]
-    Chicago,
+    /// Aliases: `chicago` until CSL 1.1
+    // Rename needed because the number is not used as word boundry by heck.
+    #[serde(alias = "chicago")]
+    #[serde(rename = "chicago-15")]
+    Chicago15,
     /// “321–28”
     #[serde(rename = "chicago-16")]
     Chicago16,
     /// “321–328”
+    #[default]
     Expanded,
     /// “321–8”
     Minimal,
     /// “321–28”
     MinimalTwo,
+}
+
+impl PageRangeFormat {
+    /// Use a page range format to format a range of pages.
+    pub fn format(
+        self,
+        range: std::ops::Range<i32>,
+        buf: &mut impl fmt::Write,
+        separator: Option<&str>,
+    ) -> Result<(), fmt::Error> {
+        let separator = separator.unwrap_or("–");
+
+        write!(buf, "{}{}", range.start, separator)?;
+        let end = range.end;
+
+        match self {
+            _ if range.start < 0 || range.end < 0 => write!(buf, "{}", end),
+            PageRangeFormat::Expanded => write!(buf, "{}", end),
+
+            PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
+                if range.start < 100 || range.start % 100 == 0 =>
+            {
+                write!(buf, "{}", end)
+            }
+            PageRangeFormat::Minimal => {
+                write!(buf, "{}", changed_part(range.start, end))
+            }
+            PageRangeFormat::MinimalTwo if end < 10 => {
+                write!(buf, "{}", changed_part(range.start, end))
+            }
+            PageRangeFormat::Chicago15
+                if range.start > 100 && (1..10).contains(&(range.start % 100)) =>
+            {
+                write!(buf, "{}", changed_part(range.start, end))
+            }
+            PageRangeFormat::Chicago15
+                if range.start > 1000 && end - range.start >= 100 =>
+            {
+                write!(buf, "{}", end)
+            }
+            PageRangeFormat::Chicago15
+            | PageRangeFormat::Chicago16
+            | PageRangeFormat::MinimalTwo => {
+                write!(buf, "{:02}", changed_part(range.start, end))
+            }
+        }
+    }
+}
+
+fn changed_part(a: i32, b: i32) -> i32 {
+    let mut base = (a.max(b) as f32).log10().floor() as u32 - 1;
+
+    // Check whether the digit at the given base is the same
+    while {
+        let a_digit = a / 10_i32.pow(base);
+        let b_digit = b / 10_i32.pow(base);
+        a_digit == b_digit && base != 0
+    } {
+        base -= 1;
+    }
+
+    b % 10_i32.pow(base + 1)
 }
 
 /// How to treat the non-dropping name particle when sorting.
