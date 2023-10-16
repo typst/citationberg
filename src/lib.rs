@@ -127,7 +127,7 @@ struct RawStyle {
     pub bibliography: Option<Bibliography>,
     /// The style's settings. Must be present in dependent styles.
     #[serde(flatten)]
-    pub independant_settings: Option<IndependentStyleSettings>,
+    pub independent_settings: Option<IndependentStyleSettings>,
     /// Reusable formatting rules.
     #[serde(rename = "macro", default)]
     pub macros: Vec<CslMacro>,
@@ -137,24 +137,12 @@ struct RawStyle {
 }
 
 impl RawStyle {
-    /// Create a style from an XML file.
-    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
-        let de = &mut deserializer(xml);
-        let style = RawStyle::deserialize(de)?;
-        Ok(style)
-    }
-
     /// Retrieve the link to the parent style for dependent styles.
     pub fn parent_link(&self) -> Option<&InfoLink> {
         self.info
             .link
             .iter()
             .find(|link| link.rel == InfoLinkRel::IndependentParent)
-    }
-
-    /// Check if the style is dependent.
-    pub fn is_dependent(&self) -> bool {
-        self.independant_settings.is_none() && self.citation.is_none()
     }
 }
 
@@ -172,11 +160,19 @@ pub struct IndependentStyle {
     /// How bibliographies are displayed.
     pub bibliography: Option<Bibliography>,
     /// The style's settings. Must be present in dependent styles.
-    pub independant_settings: IndependentStyleSettings,
+    pub settings: IndependentStyleSettings,
     /// Reusable formatting rules.
     pub macros: Vec<CslMacro>,
     /// Override localized strings.
     pub locale: Vec<Locale>,
+}
+
+impl IndependentStyle {
+    /// Create a style from an XML file.
+    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+        let de = &mut deserializer(xml);
+        IndependentStyle::deserialize(de)
+    }
 }
 
 impl<'de> Deserialize<'de> for IndependentStyle {
@@ -209,6 +205,14 @@ pub struct DependentStyle {
     pub parent_link: InfoLink,
 }
 
+impl DependentStyle {
+    /// Create a style from an XML file.
+    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+        let de = &mut deserializer(xml);
+        DependentStyle::deserialize(de)
+    }
+}
+
 impl<'de> Deserialize<'de> for DependentStyle {
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
@@ -235,6 +239,14 @@ pub enum Style {
     Dependent(DependentStyle),
 }
 
+impl Style {
+    /// Create a style from an XML file.
+    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+        let de = &mut deserializer(xml);
+        Style::deserialize(de)
+    }
+}
+
 impl<'de> Deserialize<'de> for Style {
     fn deserialize<D: serde::Deserializer<'de>>(
         deserializer: D,
@@ -250,14 +262,14 @@ impl TryFrom<RawStyle> for Style {
     fn try_from(value: RawStyle) -> Result<Self, Self::Error> {
         let has_bibliography = value.bibliography.is_some();
         if let Some(citation) = value.citation {
-            if let Some(settings) = value.independant_settings {
+            if let Some(settings) = value.independent_settings {
                 Ok(Self::Independent(IndependentStyle {
                     info: value.info,
                     default_locale: value.default_locale,
                     version: value.version,
                     citation,
                     bibliography: value.bibliography,
-                    independant_settings: settings,
+                    settings,
                     macros: value.macros,
                     locale: value.locale,
                 }))
@@ -299,12 +311,6 @@ impl fmt::Display for StyleValidationError {
             Self::MissingClassAttr => "`cs:style` tag is missing the `class` attribute",
         })
     }
-}
-
-/// Deserialize a CSL style from an XML string.
-pub fn deserialize_csl_str(s: &str) -> Result<Style, quick_xml::DeError> {
-    let de = &mut deserializer(s);
-    Style::deserialize(de)
 }
 
 fn deserializer(xml: &str) -> Deserializer<SliceReader<'_>> {
