@@ -5,14 +5,15 @@
 
 use std::{
     fmt::{self, Debug},
-    num::NonZeroUsize,
+    num::{NonZeroI16, NonZeroUsize},
 };
 
 use serde::Deserialize;
 
 use quick_xml::de::{Deserializer, SliceReader};
 use taxonomy::{
-    DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm, Term, Variable,
+    DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm,
+    StandardVariable, Term, Variable,
 };
 
 pub mod taxonomy;
@@ -109,7 +110,7 @@ macro_rules! to_affixes {
 /// A CSL style.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
-pub struct Style {
+struct RawStyle {
     /// The style's metadata.
     pub info: StyleInfo,
     /// The locale used if the user didn't specify one.
@@ -122,6 +123,8 @@ pub struct Style {
     /// How notes or in-text citations are displayed. Must be present in
     /// independent styles.
     pub citation: Option<Citation>,
+    /// How bibliographies are displayed.
+    pub bibliography: Option<Bibliography>,
     /// The style's settings. Must be present in dependent styles.
     #[serde(flatten)]
     pub independant_settings: Option<IndependentStyleSettings>,
@@ -133,11 +136,11 @@ pub struct Style {
     pub locale: Vec<Locale>,
 }
 
-impl Style {
+impl RawStyle {
     /// Create a style from an XML file.
     pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
         let de = &mut deserializer(xml);
-        let style = Style::deserialize(de)?;
+        let style = RawStyle::deserialize(de)?;
         Ok(style)
     }
 
@@ -153,6 +156,155 @@ impl Style {
     pub fn is_dependent(&self) -> bool {
         self.independant_settings.is_none() && self.citation.is_none()
     }
+}
+
+/// An independent CSL style.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct IndependentStyle {
+    /// The style's metadata.
+    pub info: StyleInfo,
+    /// The locale used if the user didn't specify one.
+    pub default_locale: Option<LocaleCode>,
+    /// The CSL version the style is compatible with.
+    pub version: String,
+    /// How notes or in-text citations are displayed.
+    pub citation: Citation,
+    /// How bibliographies are displayed.
+    pub bibliography: Option<Bibliography>,
+    /// The style's settings. Must be present in dependent styles.
+    pub independant_settings: IndependentStyleSettings,
+    /// Reusable formatting rules.
+    pub macros: Vec<CslMacro>,
+    /// Override localized strings.
+    pub locale: Vec<Locale>,
+}
+
+impl<'de> Deserialize<'de> for IndependentStyle {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
+        let raw_style = RawStyle::deserialize(deserializer)?;
+        let style: Style = raw_style.try_into().map_err(serde::de::Error::custom)?;
+
+        match style {
+            Style::Independent(i) => Ok(i),
+            Style::Dependent(_) => Err(serde::de::Error::custom(
+                "expected an independent style but got a dependent style",
+            )),
+        }
+    }
+}
+
+/// A dependent CSL style.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct DependentStyle {
+    /// The style's metadata.
+    pub info: StyleInfo,
+    /// The locale used if the user didn't specify one.
+    /// Overrides the default locale of the parent style.
+    pub default_locale: Option<LocaleCode>,
+    /// The CSL version the style is compatible with.
+    pub version: String,
+    /// The link to the parent style.
+    pub parent_link: InfoLink,
+}
+
+impl<'de> Deserialize<'de> for DependentStyle {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
+        let raw_style = RawStyle::deserialize(deserializer)?;
+        let style: Style = raw_style.try_into().map_err(serde::de::Error::custom)?;
+
+        match style {
+            Style::Dependent(d) => Ok(d),
+            Style::Independent(_) => Err(serde::de::Error::custom(
+                "expected a dependent style but got an independent style",
+            )),
+        }
+    }
+}
+
+/// A CSL style.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[allow(clippy::large_enum_variant)]
+pub enum Style {
+    /// An independent style.
+    Independent(IndependentStyle),
+    /// A dependent style.
+    Dependent(DependentStyle),
+}
+
+impl<'de> Deserialize<'de> for Style {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Self, D::Error> {
+        let raw_style = RawStyle::deserialize(deserializer)?;
+        raw_style.try_into().map_err(serde::de::Error::custom)
+    }
+}
+
+impl TryFrom<RawStyle> for Style {
+    type Error = StyleValidationError;
+
+    fn try_from(value: RawStyle) -> Result<Self, Self::Error> {
+        let has_bibliography = value.bibliography.is_some();
+        if let Some(citation) = value.citation {
+            if let Some(settings) = value.independant_settings {
+                Ok(Self::Independent(IndependentStyle {
+                    info: value.info,
+                    default_locale: value.default_locale,
+                    version: value.version,
+                    citation,
+                    bibliography: value.bibliography,
+                    independant_settings: settings,
+                    macros: value.macros,
+                    locale: value.locale,
+                }))
+            } else {
+                Err(StyleValidationError::MissingClassAttr)
+            }
+        } else if has_bibliography {
+            Err(StyleValidationError::MissingCitation)
+        } else if let Some(parent_link) = value.parent_link().cloned() {
+            Ok(Self::Dependent(DependentStyle {
+                info: value.info,
+                default_locale: value.default_locale,
+                version: value.version,
+                parent_link,
+            }))
+        } else {
+            Err(StyleValidationError::MissingParent)
+        }
+    }
+}
+
+/// An error that occurred while validating a style.
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum StyleValidationError {
+    /// The CSL style did have a `cs:bibliography` child but not a
+    /// `cs:citation`.
+    MissingCitation,
+    /// A dependent style was missing the `independent-parent` link.
+    MissingParent,
+    /// An independent style was missing the `class` attribute on `cs:style`
+    MissingClassAttr,
+}
+
+impl fmt::Display for StyleValidationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::MissingCitation => "root element is missing `cs:citation` child despite having a `cs:bibliography`",
+            Self::MissingParent => "`cs:link` tag with `independent-parent` as a `rel` attribute is missing but no `cs:citation` was defined",
+            Self::MissingClassAttr => "`cs:style` tag is missing the `class` attribute",
+        })
+    }
+}
+
+/// Deserialize a CSL style from an XML string.
+pub fn deserialize_csl_str(s: &str) -> Result<Style, quick_xml::DeError> {
+    let de = &mut deserializer(s);
+    Style::deserialize(de)
 }
 
 fn deserializer(xml: &str) -> Deserializer<SliceReader<'_>> {
@@ -179,7 +331,7 @@ pub struct IndependentStyleSettings {
     /// Specifies how to reformat page ranges.
     #[serde(rename = "@page-range-format")]
     pub page_range_format: Option<PageRangeFormat>,
-    /// How to treat the non-dropping name particle when sorting.
+    /// How to treat the non-dropping name particle when printing names.
     #[serde(rename = "@demote-non-dropping-particle", default)]
     pub demote_non_dropping_particle: DemoteNonDroppingParticle,
     /// Options for the names within. Only defined for dependent styles.
@@ -421,7 +573,7 @@ fn changed_part(a: i32, b: i32) -> i32 {
     b % 10_i32.pow(base + 1)
 }
 
-/// How to treat the non-dropping name particle when sorting.
+/// How to treat the non-dropping name particle when printing names.
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DemoteNonDroppingParticle {
@@ -691,6 +843,24 @@ impl Citation {
     /// due to presence of a `collapse` attribute.
     pub const DEFAULT_CITE_GROUP_DELIMITER: &str = ", ";
 
+    /// Return a citation with default settings and the given layout.
+    pub fn with_layout(layout: Layout) -> Self {
+        Self {
+            sort: None,
+            layout,
+            disambiguate_add_givenname: false,
+            givenname_disambiguation_rule: None,
+            disambiguate_add_names: false,
+            disambiguate_add_year_suffix: false,
+            cite_group_delimiter: None,
+            collapse: None,
+            year_suffix_delimiter: None,
+            after_collapse_delimiter: None,
+            near_note_distance: Self::default_near_note_distance(),
+            name_options: Default::default(),
+        }
+    }
+
     /// Return the `year_suffix_delimiter`.
     pub fn get_year_suffix_delimiter(&self) -> &str {
         self.year_suffix_delimiter
@@ -759,6 +929,12 @@ pub struct Bibliography {
     /// When set, the second field is aligned.
     #[serde(rename = "@second-field-align")]
     pub second_field_align: Option<SecondFieldAlign>,
+    /// The line spacing within the bibliography as a multiple of regular line spacing.
+    #[serde(rename = "@line-spacing", default = "Bibliography::default_line_spacing")]
+    pub line_spacing: NonZeroI16,
+    /// Extra space between entries as a multiple of line height.
+    #[serde(rename = "@entry-spacing", default = "Bibliography::default_entry_spacing")]
+    pub entry_spacing: i16,
     /// When set, subsequent identical names are replaced with this.
     #[serde(rename = "@subsequent-author-substitute")]
     pub subsequent_author_substitute: Option<String>,
@@ -768,6 +944,33 @@ pub struct Bibliography {
     /// Options for the names within.
     #[serde(flatten)]
     pub options: InheritableNameOptions,
+}
+
+impl Bibliography {
+    /// Return a bibliography with default settings and the given layout.
+    pub fn with_layout(layout: Layout) -> Self {
+        Self {
+            sort: None,
+            layout,
+            hanging_indent: false,
+            second_field_align: None,
+            line_spacing: Self::default_line_spacing(),
+            entry_spacing: Self::default_entry_spacing(),
+            subsequent_author_substitute: None,
+            subsequent_author_substitute_rule: Default::default(),
+            options: Default::default(),
+        }
+    }
+
+    /// Return the default `line_spacing`.
+    fn default_line_spacing() -> NonZeroI16 {
+        NonZeroI16::new(1).unwrap()
+    }
+
+    /// Return the default `entry_spacing`.
+    const fn default_entry_spacing() -> i16 {
+        1
+    }
 }
 
 /// How to position the first field if the second field is aligned in a bibliography.
@@ -911,6 +1114,66 @@ pub struct Layout {
 to_formatting!(Layout, self);
 to_affixes!(Layout, self);
 
+impl Layout {
+    /// Return a layout with default settings and the given elements.
+    pub fn with_elements(elements: Vec<LayoutRenderingElement>) -> Self {
+        Self {
+            elements,
+            font_style: None,
+            font_variant: None,
+            font_weight: None,
+            text_decoration: None,
+            vertical_align: None,
+            prefix: None,
+            suffix: None,
+            delimiter: None,
+        }
+    }
+
+    /// Check whether this layout explicitly renders the `year-suffix` variable.
+    pub fn renders_year_suffix(&self, macros: &[CslMacro]) -> RendersYearSuffix {
+        self.elements.iter().fold(RendersYearSuffix::No, |verdict, e| {
+            verdict.or_else(|| e.renders_year_suffix(macros))
+        })
+    }
+}
+
+/// Whether a `cs:layout` element will render the `year-suffix` variable.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum RendersYearSuffix {
+    /// The layout will always render the `year-suffix` variable.
+    Yes,
+    /// The layout will never render the `year-suffix` variable.
+    No,
+    /// The layout will conditionally render the `year-suffix` variable.
+    Maybe,
+}
+
+impl RendersYearSuffix {
+    /// Make the outcome conditional.
+    pub fn maybe(self) -> Self {
+        match self {
+            Self::Yes | Self::Maybe => Self::Maybe,
+            Self::No => Self::No,
+        }
+    }
+
+    /// Make a disjunction between this and another outcome.
+    pub fn or_else<F>(self, f: F) -> Self
+    where
+        F: FnOnce() -> Self,
+    {
+        match self {
+            Self::Yes => Self::Yes,
+            Self::No => f(),
+            Self::Maybe => match f() {
+                Self::Yes => Self::Yes,
+                Self::No | Self::Maybe => Self::Maybe,
+            },
+        }
+    }
+}
+
 /// Possible parts of a formatting rule.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -929,6 +1192,57 @@ pub enum LayoutRenderingElement {
     Group(Group),
     /// Conditional rendering.
     Choose(Choose),
+}
+
+impl LayoutRenderingElement {
+    /// Check whether this layout explicitly renders the `year-suffix` variable.
+    fn renders_year_suffix(&self, macros: &[CslMacro]) -> RendersYearSuffix {
+        match self {
+            Self::Text(text) => match &text.target {
+                TextTarget::Variable {
+                    var: Variable::Standard(StandardVariable::YearSuffix),
+                    ..
+                } => RendersYearSuffix::Yes,
+                TextTarget::Macro { name, .. } => {
+                    macros.iter().fold(RendersYearSuffix::No, |verdict, m| {
+                        if &m.name == name {
+                            verdict.or_else(|| m.renders_year_suffix(macros))
+                        } else {
+                            verdict
+                        }
+                    })
+                }
+                _ => RendersYearSuffix::No,
+            },
+            Self::Names(n) => n
+                .substitute
+                .as_ref()
+                .and_then(|n| {
+                    n.children
+                        .iter()
+                        .any(|r| r.renders_year_suffix(macros) != RendersYearSuffix::No)
+                        .then_some(RendersYearSuffix::Maybe)
+                })
+                .unwrap_or(RendersYearSuffix::No),
+            Self::Group(g) => {
+                g.children.iter().fold(RendersYearSuffix::No, |verdict, c| {
+                    verdict.or_else(|| c.renders_year_suffix(macros))
+                })
+            }
+            Self::Choose(c) => {
+                if c.branches().any(|b| {
+                    b.children
+                        .iter()
+                        .any(|c| c.renders_year_suffix(macros) != RendersYearSuffix::No)
+                }) {
+                    RendersYearSuffix::Maybe
+                } else {
+                    RendersYearSuffix::No
+                }
+            }
+            _ => RendersYearSuffix::No,
+        }
+    }
 }
 
 /// Rendering elements.
@@ -969,6 +1283,21 @@ pub struct Text {
     /// Transform the text case.
     #[serde(rename = "@text-case")]
     pub text_case: Option<TextCase>,
+}
+
+impl Text {
+    /// Return a text with default settings and the given target.
+    pub fn with_target(target: impl Into<TextTarget>) -> Self {
+        Self {
+            target: target.into(),
+            formatting: Default::default(),
+            affixes: Default::default(),
+            display: None,
+            quotes: false,
+            strip_periods: false,
+            text_case: None,
+        }
+    }
 }
 
 to_formatting!(Text);
@@ -1959,6 +2288,14 @@ pub struct CslMacro {
     pub children: Vec<LayoutRenderingElement>,
 }
 
+impl CslMacro {
+    fn renders_year_suffix(&self, macros: &[CslMacro]) -> RendersYearSuffix {
+        self.children.iter().fold(RendersYearSuffix::No, |acc, child| {
+            acc.or_else(|| child.renders_year_suffix(macros))
+        })
+    }
+}
+
 /// Root element of a locale file.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -2523,7 +2860,7 @@ mod test {
     fn check_style(csl_files: &'static str, kind: &'static str) {
         folder(csl_files, "csl", kind, |source| {
             let de = &mut deserializer(source);
-            let result: Result<Style, _> = serde_path_to_error::deserialize(de);
+            let result: Result<RawStyle, _> = serde_path_to_error::deserialize(de);
             match result {
                 Ok(_) => None,
                 Err(err) => Some(Box::new(err)),
