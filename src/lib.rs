@@ -3,10 +3,8 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
-use std::{
-    fmt::{self, Debug},
-    num::{NonZeroI16, NonZeroUsize},
-};
+use std::fmt::{self, Debug};
+use std::num::{NonZeroI16, NonZeroUsize};
 
 use serde::Deserialize;
 
@@ -1032,19 +1030,25 @@ pub enum SortKey {
         name: String,
         /// Override `[InheritedNameOptions::et_al_min]` and
         /// `[InheritedNameOptions::et_al_subsequent_min]` for macros.
-        #[serde(rename = "@names-min", deserialize_with = "deserialize_u32_option")]
+        #[serde(
+            rename = "@names-min",
+            deserialize_with = "deserialize_u32_option",
+            default
+        )]
         names_min: Option<u32>,
         /// Override `[InheritedNameOptions::et_al_use_first]` and
         /// `[InheritedNameOptions::et_al_subsequent_use_first]` for macros.
         #[serde(
             rename = "@names-use-first",
-            deserialize_with = "deserialize_u32_option"
+            deserialize_with = "deserialize_u32_option",
+            default
         )]
         names_use_first: Option<u32>,
         /// Override `[InheritedNameOptions::et_al_use_last]` for macros.
         #[serde(
             rename = "@names-use-last",
-            deserialize_with = "deserialize_bool_option"
+            deserialize_with = "deserialize_bool_option",
+            default
         )]
         names_use_last: Option<bool>,
         /// In which direction to sort.
@@ -1145,11 +1149,12 @@ impl Layout {
 }
 
 /// Whether a `cs:layout` element will render the `year-suffix` variable.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
 pub enum RendersYearSuffix {
     /// The layout will always render the `year-suffix` variable.
     Yes,
     /// The layout will never render the `year-suffix` variable.
+    #[default]
     No,
     /// The layout will conditionally render the `year-suffix` variable.
     Maybe,
@@ -1655,11 +1660,9 @@ pub struct Names {
     #[serde(rename = "@variable")]
     pub variable: Vec<NameVariable>,
     /// How the names are formatted.
-    #[serde(default)]
-    pub name: Name,
+    pub name: Option<Name>,
     /// Configuration of the et al. abbreviation.
-    #[serde(default)]
-    pub et_al: EtAl,
+    pub et_al: Option<EtAl>,
     /// Substitutions in case the variable is empty.
     pub substitute: Option<Substitute>,
     /// Label for the names.
@@ -1689,6 +1692,37 @@ impl Names {
             .or(name_options.name_delimiter.as_deref())
             .unwrap_or_default()
     }
+
+    /// Convert a [`Names`] within a substitute to a name using the parent element.
+    pub fn from_names_substitue(&self, child: &Self) -> Names {
+        if child.name.is_some() || child.et_al.is_some() || child.substitute.is_some() {
+            return child.clone();
+        }
+
+        Names {
+            variable: child.variable.clone(),
+            name: self.name.clone(),
+            et_al: self.et_al,
+            substitute: None,
+            label: child.label.clone().or_else(|| self.label.clone()),
+            delimiter: child.delimiter.clone().or_else(|| self.delimiter.clone()),
+            options: self.options.apply(&child.options),
+            formatting: child.formatting.apply(self.formatting),
+            affixes: Affixes {
+                prefix: child
+                    .affixes
+                    .prefix
+                    .clone()
+                    .or_else(|| self.affixes.prefix.clone()),
+                suffix: child
+                    .affixes
+                    .suffix
+                    .clone()
+                    .or_else(|| self.affixes.suffix.clone()),
+            },
+            display: child.display.or(self.display),
+        }
+    }
 }
 
 to_formatting!(Names);
@@ -1703,7 +1737,7 @@ pub struct Name {
     delimiter: Option<String>,
     /// Which name parts to display for personal names.
     #[serde(rename = "@form")]
-    form: Option<NameForm>,
+    pub form: Option<NameForm>,
     /// Name parts for formatting for the given and family name.
     #[serde(rename = "name-part")]
     parts: Vec<NamePart>,
@@ -1789,32 +1823,46 @@ pub struct InheritableNameOptions {
     #[serde(rename = "@delimiter-precedes-last")]
     pub delimiter_precedes_last: Option<DelimiterBehavior>,
     /// Minimum number of names to use et al.
-    #[serde(rename = "@et-al-min", deserialize_with = "deserialize_u32_option")]
+    #[serde(rename = "@et-al-min", deserialize_with = "deserialize_u32_option", default)]
     pub et_al_min: Option<u32>,
     /// Maximum number of names to use before et al.
-    #[serde(rename = "@et-al-use-first", deserialize_with = "deserialize_u32_option")]
+    #[serde(
+        rename = "@et-al-use-first",
+        deserialize_with = "deserialize_u32_option",
+        default
+    )]
     pub et_al_use_first: Option<u32>,
     /// Minimum number of names to use et al. for repeated citations.
     #[serde(
         rename = "@et-al-subsequent-min",
-        deserialize_with = "deserialize_u32_option"
+        deserialize_with = "deserialize_u32_option",
+        default
     )]
     pub et_al_subsequent_min: Option<u32>,
     /// Maximum number of names to use before et al. for repeated citations.
     #[serde(
         rename = "@et-al-subsequent-use-first",
-        deserialize_with = "deserialize_u32_option"
+        deserialize_with = "deserialize_u32_option",
+        default
     )]
     pub et_al_subsequent_use_first: Option<u32>,
     /// Whether to use the last name in the author list when there are at least
     /// `et_al_min` names.
-    #[serde(rename = "@et-al-use-last", deserialize_with = "deserialize_bool_option")]
+    #[serde(
+        rename = "@et-al-use-last",
+        deserialize_with = "deserialize_bool_option",
+        default
+    )]
     pub et_al_use_last: Option<bool>,
     /// Which name parts to display for personal names.
     #[serde(rename = "@name-form")]
     pub name_form: Option<NameForm>,
     /// Whether to initialize the first name if `initialize-with` is Some.
-    #[serde(rename = "@initialize", deserialize_with = "deserialize_bool_option")]
+    #[serde(
+        rename = "@initialize",
+        deserialize_with = "deserialize_bool_option",
+        default
+    )]
     pub initialize: Option<bool>,
     /// String to initialize the first name with.
     #[serde(rename = "@initialize-with")]
