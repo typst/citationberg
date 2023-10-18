@@ -796,8 +796,8 @@ pub struct Citation {
     )]
     pub disambiguate_add_givenname: bool,
     /// When to expand names that are ambiguous in short form.
-    #[serde(rename = "@disambiguate-add-givenname-rule")]
-    pub givenname_disambiguation_rule: Option<DisambiguationRule>,
+    #[serde(rename = "@disambiguate-add-givenname-rule", default)]
+    pub givenname_disambiguation_rule: DisambiguationRule,
     /// Disambiguate by adding more names that would otherwise be hidden by et al.
     ///
     /// Default: `false`
@@ -853,7 +853,7 @@ impl Citation {
             sort: None,
             layout,
             disambiguate_add_givenname: false,
-            givenname_disambiguation_rule: None,
+            givenname_disambiguation_rule: DisambiguationRule::default(),
             disambiguate_add_names: false,
             disambiguate_add_year_suffix: false,
             cite_group_delimiter: None,
@@ -902,6 +902,25 @@ pub enum DisambiguationRule {
     /// Expand to disambiguate cites but not names.
     #[default]
     ByCite,
+}
+
+impl DisambiguationRule {
+    /// Whether this rule allows full first names or only initials.
+    pub fn allows_full_first_names(self) -> bool {
+        match self {
+            Self::AllNames | Self::PrimaryName => true,
+            Self::AllNamesWithInitials | Self::PrimaryNameWithInitials => false,
+            Self::ByCite => false,
+        }
+    }
+
+    /// Whether this rule allows looking beyond the first name.
+    pub fn allows_multiple_names(self) -> bool {
+        match self {
+            Self::AllNames | Self::AllNamesWithInitials | Self::ByCite => true,
+            Self::PrimaryName | Self::PrimaryNameWithInitials => false,
+        }
+    }
 }
 
 /// How to collapse cites with similar items.
@@ -1954,6 +1973,22 @@ impl InheritableNameOptions {
     }
 }
 
+impl NameOptions<'_> {
+    /// Whether the nth name is suppressed given the number of names and this
+    /// configuration.
+    pub fn is_suppressed(&self, idx: usize, length: usize) -> bool {
+        // This is not suppressed if we print the last element and this is it.
+        if self.et_al_use_last && idx + 1 >= length {
+            return false;
+        }
+
+        let et_al_min = self.et_al_min.map_or(usize::MAX, |u| u as usize);
+        let et_al_use_first = self.et_al_use_first.map_or(usize::MAX, |u| u as usize);
+
+        length > et_al_min && idx + 1 > et_al_use_first
+    }
+}
+
 /// How to render the delimiter before the last name.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -2622,13 +2657,13 @@ impl LocalizedTerm {
     /// Get the singular variant of this term translation. Shall be defined for
     /// valid CSL files.
     pub fn single(&self) -> Option<&str> {
-        self.single.as_deref().and(self.localization.as_deref())
+        self.single.as_deref().or(self.localization.as_deref())
     }
 
     /// Get the plural variant of this term translation. Shall be defined for
     /// valid CSL files.
     pub fn multiple(&self) -> Option<&str> {
-        self.multiple.as_deref().and(self.localization.as_deref())
+        self.multiple.as_deref().or(self.localization.as_deref())
     }
 }
 
