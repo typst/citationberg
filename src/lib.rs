@@ -16,7 +16,7 @@ use taxonomy::{
 
 pub mod taxonomy;
 
-const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(2048);
+const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(4096);
 
 fn deserialize_bool<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
