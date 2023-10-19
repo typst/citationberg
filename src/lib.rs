@@ -408,6 +408,15 @@ impl<'a> LocaleCode {
             .skip(1)
     }
 
+    /// Check whether the language is English.
+    pub fn is_english(&self) -> bool {
+        let en = "en";
+        let hyphen = "-";
+        self.0.starts_with(en)
+            && (self.0.len() == 2
+                || self.0.get(en.len()..en.len() + hyphen.len()) == Some(hyphen))
+    }
+
     /// Get the fallback locale for a locale.
     pub fn fallback(&self) -> Option<LocaleCode> {
         match self.parse_base()? {
@@ -2897,6 +2906,19 @@ pub enum TextCase {
     /// Title case. Only applies to English.
     #[serde(rename = "title")]
     TitleCase,
+}
+
+impl TextCase {
+    /// Check whether this case can be applied to languages other than English.
+    pub fn is_language_independent(self) -> bool {
+        match self {
+            Self::Lowercase
+            | Self::Uppercase
+            | Self::CapitalizeFirst
+            | Self::CapitalizeAll => true,
+            Self::SentenceCase | Self::TitleCase => false,
+        }
+    }
 }
 
 #[cfg(test)]
