@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 description = "Read and process CSL files"
 repository = "https://github.com/typst/citationberg"
 readme = "README.md"
-categories = ["database", "parser-implementations", "text-processing"]
+categories = ["parser-implementations", "text-processing"]
 keywords = ["csl", "bibliography", "citation"]
 edition = "2021"
 
