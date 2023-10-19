@@ -966,7 +966,7 @@ pub struct Bibliography {
     pub subsequent_author_substitute_rule: SubsequentAuthorSubstituteRule,
     /// Options for the names within.
     #[serde(flatten)]
-    pub options: InheritableNameOptions,
+    pub name_options: InheritableNameOptions,
 }
 
 impl Bibliography {
@@ -981,7 +981,7 @@ impl Bibliography {
             entry_spacing: Self::default_entry_spacing(),
             subsequent_author_substitute: None,
             subsequent_author_substitute_rule: Default::default(),
-            options: Default::default(),
+            name_options: Default::default(),
         }
     }
 
@@ -2299,7 +2299,6 @@ impl ChooseBranch {
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
 pub struct ElseBranch {
     /// The formatting instructions.
-    /// TODO: May need to accept <cs:layout>.
     #[serde(rename = "$value")]
     pub children: Vec<LayoutRenderingElement>,
 }
@@ -2482,23 +2481,22 @@ impl<'a> OrdinalLookup<'a> {
     }
 
     /// Look up a short ordinal for a number.
-    pub fn lookup(&self, n: i32) -> Option<&'a str> {
+    pub fn lookup(&self, n: i32, gender: Option<GrammarGender>) -> Option<&'a str> {
         let mut best_match: Option<&'a LocalizedTerm> = None;
 
         // Prefer match with o > 9 and the smallest difference to n
         let mut change_match = |other_match: &'a LocalizedTerm| {
-            let current = if let Some(current) = best_match {
-                current
-            } else {
+            let Some(current) = best_match else {
                 best_match = Some(other_match);
                 return;
             };
 
+            // Extract the number from the term name.
             let Term::Other(OtherTerm::OrdinalN(other_n)) = other_match.name else {
                 return;
             };
 
-            let Term::Other(OtherTerm::OrdinalN(curr_n)) = other_match.name else {
+            let Term::Other(OtherTerm::OrdinalN(curr_n)) = current.name else {
                 best_match = Some(other_match);
                 return;
             };
@@ -2508,13 +2506,22 @@ impl<'a> OrdinalLookup<'a> {
             } else if other_n < 10 && curr_n >= 10 {
                 current
             } else {
-                let diff_other = (n - other_n as i32).abs();
-                let diff_curr = (n - curr_n as i32).abs();
-
-                if diff_other <= diff_curr {
+                // Both matches are either < 10 or >= 10.
+                // Check the gender form.
+                if gender == current.gender && gender != other_match.gender {
+                    current
+                } else if gender != current.gender && gender == other_match.gender {
                     other_match
                 } else {
-                    current
+                    // Choose the smallest difference.
+                    let diff_other = (n - other_n as i32).abs();
+                    let diff_curr = (n - curr_n as i32).abs();
+
+                    if diff_other <= diff_curr {
+                        other_match
+                    } else {
+                        current
+                    }
                 }
             })
         };
