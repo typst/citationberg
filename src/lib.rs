@@ -35,7 +35,7 @@
 use std::fmt::{self, Debug};
 use std::num::{NonZeroI16, NonZeroUsize};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use quick_xml::de::{Deserializer, SliceReader};
 use taxonomy::{
@@ -45,38 +45,85 @@ use taxonomy::{
 
 pub mod taxonomy;
 
+/// Error type for functions that serialize and deserialize XML.
+pub type XmlSerdeError = quick_xml::de::DeError;
+/// Error type for functions that deserialise CBOR.
+#[cfg(feature = "ciborium")]
+pub type CborDeserializeError = ciborium::de::Error<std::io::Error>;
+/// Error type for functions that serialise CBOR.
+#[cfg(feature = "ciborium")]
+pub type CborSerializeError = ciborium::ser::Error<std::io::Error>;
 const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(4096);
 
 fn deserialize_bool<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<bool, D::Error> {
-    let res = String::deserialize(deserializer)?;
-    Ok(res.to_ascii_lowercase() == "true")
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrBool {
+        Bool(bool),
+        String(String),
+    }
+
+    let deser = StringOrBool::deserialize(deserializer)?;
+    Ok(match deser {
+        StringOrBool::Bool(b) => b,
+        StringOrBool::String(s) => s.to_ascii_lowercase() == "true",
+    })
 }
 
 fn deserialize_bool_option<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<bool>, D::Error> {
-    let res = Option::<String>::deserialize(deserializer)?;
-    Ok(res.map(|s| s.to_ascii_lowercase() == "true"))
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrBool {
+        Bool(bool),
+        String(String),
+    }
+
+    let res = Option::<StringOrBool>::deserialize(deserializer)?;
+    Ok(res.map(|s| match s {
+        StringOrBool::Bool(b) => b,
+        StringOrBool::String(s) => s.to_ascii_lowercase() == "true",
+    }))
 }
 
 fn deserialize_u32<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<u32, D::Error> {
-    let res = String::deserialize(deserializer)?;
-    let res = res.trim().parse().map_err(serde::de::Error::custom)?;
-    Ok(res)
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrUnsigned {
+        Unsigned(u32),
+        String(String),
+    }
+
+    let res = StringOrUnsigned::deserialize(deserializer)?;
+    Ok(match res {
+        StringOrUnsigned::Unsigned(u) => u,
+        StringOrUnsigned::String(s) => {
+            s.trim().parse().map_err(serde::de::Error::custom)?
+        }
+    })
 }
 
 fn deserialize_u32_option<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<u32>, D::Error> {
-    let res = Option::<String>::deserialize(deserializer)?;
-    let res = res
-        .map(|s| s.trim().parse().map_err(serde::de::Error::custom))
-        .transpose()?;
-    Ok(res)
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrUnsigned {
+        Unsigned(u32),
+        String(String),
+    }
+
+    let res = Option::<StringOrUnsigned>::deserialize(deserializer)?;
+    res.map(|s| match s {
+        StringOrUnsigned::Unsigned(u) => Ok(u),
+        StringOrUnsigned::String(s) => s.trim().parse().map_err(serde::de::Error::custom),
+    })
+    .transpose()
 }
 
 /// Allow every struct with formatting properties to convert to a `Formatting`.
@@ -136,21 +183,24 @@ macro_rules! to_affixes {
 
 /// A CSL style.
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 struct RawStyle {
     /// The style's metadata.
     pub info: StyleInfo,
     /// The locale used if the user didn't specify one.
     /// Overrides the default locale of the parent style.
     #[serde(rename = "@default-locale")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_locale: Option<LocaleCode>,
     /// The CSL version the style is compatible with.
     #[serde(rename = "@version")]
     pub version: String,
     /// How notes or in-text citations are displayed. Must be present in
     /// independent styles.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub citation: Option<Citation>,
     /// How bibliographies are displayed.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bibliography: Option<Bibliography>,
     /// The style's settings. Must be present in dependent styles.
     #[serde(flatten)]
@@ -170,6 +220,45 @@ impl RawStyle {
             .link
             .iter()
             .find(|link| link.rel == InfoLinkRel::IndependentParent)
+    }
+}
+
+impl From<IndependentStyle> for RawStyle {
+    fn from(value: IndependentStyle) -> Self {
+        Self {
+            info: value.info,
+            default_locale: value.default_locale,
+            version: value.version,
+            citation: Some(value.citation),
+            bibliography: value.bibliography,
+            independent_settings: Some(value.settings),
+            macros: value.macros,
+            locale: value.locale,
+        }
+    }
+}
+
+impl From<DependentStyle> for RawStyle {
+    fn from(value: DependentStyle) -> Self {
+        Self {
+            info: value.info,
+            default_locale: value.default_locale,
+            version: value.version,
+            citation: None,
+            bibliography: None,
+            independent_settings: None,
+            macros: Vec::new(),
+            locale: Vec::new(),
+        }
+    }
+}
+
+impl From<Style> for RawStyle {
+    fn from(value: Style) -> Self {
+        match value {
+            Style::Independent(i) => i.into(),
+            Style::Dependent(d) => d.into(),
+        }
     }
 }
 
@@ -196,10 +285,25 @@ pub struct IndependentStyle {
 
 impl IndependentStyle {
     /// Create a style from an XML file.
-    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
         let de = &mut deserializer(xml);
         IndependentStyle::deserialize(de)
     }
+
+    /// Remove all non-required data that does not influence the style's
+    /// formatting.
+    pub fn purge(&mut self, level: PurgeLevel) {
+        self.info.purge(level);
+    }
+}
+
+/// How much metadata to remove from the style.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum PurgeLevel {
+    /// Retain some basic metadata.
+    Basic,
+    /// Purge all metadata.
+    Full,
 }
 
 impl<'de> Deserialize<'de> for IndependentStyle {
@@ -234,9 +338,15 @@ pub struct DependentStyle {
 
 impl DependentStyle {
     /// Create a style from an XML file.
-    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
         let de = &mut deserializer(xml);
         DependentStyle::deserialize(de)
+    }
+
+    /// Remove all non-required data that does not influence the style's
+    /// formatting.
+    pub fn purge(&mut self, level: PurgeLevel) {
+        self.info.purge(level);
     }
 }
 
@@ -268,9 +378,48 @@ pub enum Style {
 
 impl Style {
     /// Create a style from an XML file.
-    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
         let de = &mut deserializer(xml);
         Style::deserialize(de)
+    }
+
+    /// Write the style to an XML file.
+    pub fn to_xml(&self) -> Result<String, XmlSerdeError> {
+        let mut buf = String::new();
+        let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
+        self.serialize(ser)?;
+        Ok(buf)
+    }
+
+    /// Create a style from a CBOR file.
+    #[cfg(feature = "ciborium")]
+    pub fn from_cbor(reader: &[u8]) -> Result<Self, CborDeserializeError> {
+        ciborium::de::from_reader(reader)
+    }
+
+    /// Write the style to a CBOR file.
+    #[cfg(feature = "ciborium")]
+    pub fn to_cbor(&self) -> Result<Vec<u8>, CborSerializeError> {
+        let mut buf = Vec::new();
+        ciborium::ser::into_writer(self, &mut buf)?;
+        Ok(buf)
+    }
+
+    /// Remove all non-required data that does not influence the style's
+    /// formatting.
+    pub fn purge(&mut self, level: PurgeLevel) {
+        match self {
+            Self::Independent(i) => i.purge(level),
+            Self::Dependent(d) => d.purge(level),
+        }
+    }
+
+    /// Get the style's metadata.
+    pub fn info(&self) -> &StyleInfo {
+        match self {
+            Self::Independent(i) => &i.info,
+            Self::Dependent(d) => &d.info,
+        }
     }
 }
 
@@ -280,6 +429,15 @@ impl<'de> Deserialize<'de> for Style {
     ) -> Result<Self, D::Error> {
         let raw_style = RawStyle::deserialize(deserializer)?;
         raw_style.try_into().map_err(serde::de::Error::custom)
+    }
+}
+
+impl Serialize for Style {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        RawStyle::from(self.clone()).serialize(serializer)
     }
 }
 
@@ -347,7 +505,7 @@ fn deserializer(xml: &str) -> Deserializer<SliceReader<'_>> {
 }
 
 /// A style with its own formatting rules.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct IndependentStyleSettings {
     /// How the citations are displayed.
     #[serde(rename = "@class")]
@@ -363,6 +521,7 @@ pub struct IndependentStyleSettings {
     pub initialize_with_hyphen: bool,
     /// Specifies how to reformat page ranges.
     #[serde(rename = "@page-range-format")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub page_range_format: Option<PageRangeFormat>,
     /// How to treat the non-dropping name particle when printing names.
     #[serde(rename = "@demote-non-dropping-particle", default)]
@@ -380,7 +539,7 @@ impl IndependentStyleSettings {
 }
 
 /// An RFC 1766 language code.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct LocaleCode(pub String);
 
 impl<'a> LocaleCode {
@@ -500,6 +659,12 @@ impl<'a> LocaleCode {
     }
 }
 
+impl fmt::Display for LocaleCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
 /// The base language in a [`LocaleCode`].
 pub enum BaseLanguage {
     /// A language code.
@@ -522,7 +687,7 @@ impl BaseLanguage {
 }
 
 /// How the citations are displayed.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StyleClass {
     /// Citations are inlined in the text.
@@ -532,7 +697,7 @@ pub enum StyleClass {
 }
 
 /// How to reformat page ranges.
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PageRangeFormat {
     /// “321–28”
@@ -616,7 +781,7 @@ fn changed_part(a: i32, b: i32) -> i32 {
 }
 
 /// How to treat the non-dropping name particle when printing names.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DemoteNonDroppingParticle {
     /// Treat as part of the first name.
@@ -629,7 +794,8 @@ pub enum DemoteNonDroppingParticle {
 }
 
 /// Citation style metadata
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct StyleInfo {
     /// The authors of the style
     #[serde(rename = "author")]
@@ -651,31 +817,70 @@ pub struct StyleInfo {
     #[serde(default)]
     pub issn: Vec<String>,
     /// The eISSN for the source of the style's publication.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub eissn: Option<String>,
     /// The ISSN-L for the source of the style's publication.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub issnl: Option<String>,
     /// Links with more information about the style.
     #[serde(default)]
     pub link: Vec<InfoLink>,
     /// When the style was initially published.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub published: Option<Timestamp>,
     /// Under which license the style is published.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rights: Option<License>,
     /// A short description of the style.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<LocalString>,
     /// The title of the style.
     pub title: LocalString,
     /// A shortened version of the title.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title_short: Option<LocalString>,
     /// When the style was last updated.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<Timestamp>,
 }
 
+impl StyleInfo {
+    /// Remove all non-required fields.
+    pub fn purge(&mut self, level: PurgeLevel) {
+        self.field.clear();
+        self.issn.clear();
+        self.eissn = None;
+        self.issnl = None;
+        self.published = None;
+        self.summary = None;
+        self.updated = None;
+
+        match level {
+            PurgeLevel::Basic => {
+                for person in self.authors.iter_mut().chain(self.contibutors.iter_mut()) {
+                    person.email = None;
+                    person.uri = None;
+                }
+                self.link.retain(|i| {
+                    matches!(i.rel, InfoLinkRel::IndependentParent | InfoLinkRel::Zelf)
+                });
+            }
+            PurgeLevel::Full => {
+                self.authors.clear();
+                self.contibutors.clear();
+                self.link.retain(|i| i.rel == InfoLinkRel::IndependentParent);
+                self.rights = None;
+            }
+        }
+    }
+}
+
 /// A string annotated with a locale.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct LocalString {
     /// The string's locale.
     #[serde(rename = "@lang")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<LocaleCode>,
     /// The string's value.
     #[serde(rename = "$value", default)]
@@ -683,18 +888,20 @@ pub struct LocalString {
 }
 
 /// A person affiliated with the style.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct StyleAttribution {
     /// The person's name.
     pub name: String,
     /// The person's email address.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
     /// A URI for the person.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
 }
 
 /// Which category this style belongs in.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum StyleCategory {
     /// Which format the citations are in. May only appear once as a child of `category`.
@@ -712,7 +919,7 @@ pub enum StyleCategory {
 }
 
 /// What type of in-text citation is used.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CitationFormat {
     /// “… (Doe, 1999)”
@@ -729,7 +936,7 @@ pub enum CitationFormat {
 
 /// In which academic field the style is used.
 #[allow(missing_docs)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Field {
     Anthropology,
@@ -763,7 +970,7 @@ pub enum Field {
 }
 
 /// A link with more information about the style.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct InfoLink {
     /// The link's URL.
     #[serde(rename = "@href")]
@@ -773,14 +980,16 @@ pub struct InfoLink {
     pub rel: InfoLinkRel,
     /// A human-readable description of the link.
     #[serde(rename = "$value")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// The link's locale.
     #[serde(rename = "@xml:lang")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<LocaleCode>,
 }
 
 /// How a link relates to the style.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InfoLinkRel {
     /// Website of the style.
@@ -795,7 +1004,7 @@ pub enum InfoLinkRel {
 }
 
 /// An ISO 8601 chapter 5.4 timestamp.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Timestamp {
     /// The timestamp's value.
     #[serde(rename = "$text")]
@@ -803,24 +1012,27 @@ pub struct Timestamp {
 }
 
 /// A license description.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct License {
     /// The license's name.
     #[serde(rename = "$text")]
     pub name: String,
     /// The license's URL.
     #[serde(rename = "@license")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
     /// The license string's locale.
     #[serde(rename = "@xml:lang")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<LocaleCode>,
 }
 
 /// Formatting instructions for in-text or note citations.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Citation {
     /// How items are sorted within the citation.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<Sort>,
     /// The citation's formatting rules.
     pub layout: Layout,
@@ -856,15 +1068,19 @@ pub struct Citation {
     pub disambiguate_add_year_suffix: bool,
     /// Group items in cite by name.
     #[serde(rename = "@cite-group-delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub cite_group_delimiter: Option<String>,
     /// How to collapse cites with similar items.
     #[serde(rename = "@collapse")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub collapse: Option<Collapse>,
     /// Delimiter between year suffixes.
     #[serde(rename = "@year-suffix-delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub year_suffix_delimiter: Option<String>,
     /// Delimiter after a collapsed cite group.
     #[serde(rename = "@after-collapse-delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub after_collapse_delimiter: Option<String>,
     /// When near-note-distance is true.
     ///
@@ -926,7 +1142,7 @@ impl Citation {
 }
 
 /// When to expand names that are ambiguous in short form.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DisambiguationRule {
     /// Expand to disambiguate both cites and names.
@@ -962,7 +1178,7 @@ impl DisambiguationRule {
 }
 
 /// How to collapse cites with similar items.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Collapse {
     /// Collapse items with increasing ranges for numeric styles.
@@ -976,9 +1192,10 @@ pub enum Collapse {
 }
 
 /// Formatting instructions for the bibliography.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Bibliography {
     /// How items are sorted within the citation.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<Sort>,
     /// The citation's formatting rules.
     pub layout: Layout,
@@ -989,6 +1206,7 @@ pub struct Bibliography {
     pub hanging_indent: bool,
     /// When set, the second field is aligned.
     #[serde(rename = "@second-field-align")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub second_field_align: Option<SecondFieldAlign>,
     /// The line spacing within the bibliography as a multiple of regular line spacing.
     #[serde(rename = "@line-spacing", default = "Bibliography::default_line_spacing")]
@@ -998,6 +1216,7 @@ pub struct Bibliography {
     pub entry_spacing: i16,
     /// When set, subsequent identical names are replaced with this.
     #[serde(rename = "@subsequent-author-substitute")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub subsequent_author_substitute: Option<String>,
     /// How to replace subsequent identical names.
     #[serde(rename = "@subsequent-author-substitute-rule", default)]
@@ -1035,7 +1254,7 @@ impl Bibliography {
 }
 
 /// How to position the first field if the second field is aligned in a bibliography.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SecondFieldAlign {
     /// Put the first field in the margin and align with the margin.
@@ -1045,7 +1264,7 @@ pub enum SecondFieldAlign {
 }
 
 /// How to replace subsequent identical names in a bibliography.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SubsequentAuthorSubstituteRule {
     /// When all names match, replace.
@@ -1060,7 +1279,7 @@ pub enum SubsequentAuthorSubstituteRule {
 }
 
 /// How to sort elements in a bibliography or citation.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Sort {
     /// The ordered list of sorting keys.
     #[serde(rename = "key")]
@@ -1068,7 +1287,7 @@ pub struct Sort {
 }
 
 /// A sorting key.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum SortKey {
     /// Sort by the value of a variable.
@@ -1092,6 +1311,7 @@ pub enum SortKey {
             deserialize_with = "deserialize_u32_option",
             default
         )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         names_min: Option<u32>,
         /// Override `[InheritedNameOptions::et_al_use_first]` and
         /// `[InheritedNameOptions::et_al_subsequent_use_first]` for macros.
@@ -1100,6 +1320,7 @@ pub enum SortKey {
             deserialize_with = "deserialize_u32_option",
             default
         )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         names_use_first: Option<u32>,
         /// Override `[InheritedNameOptions::et_al_use_last]` for macros.
         #[serde(
@@ -1107,6 +1328,7 @@ pub enum SortKey {
             deserialize_with = "deserialize_bool_option",
             default
         )]
+        #[serde(skip_serializing_if = "Option::is_none")]
         names_use_last: Option<bool>,
         /// In which direction to sort.
         #[serde(rename = "@sort", default)]
@@ -1134,7 +1356,7 @@ impl SortKey {
 }
 
 /// The direction to sort in.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SortDirection {
     /// Sort in ascending order.
@@ -1145,7 +1367,7 @@ pub enum SortDirection {
 }
 
 /// A formatting rule.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Layout {
     /// Parts of the rule.
     #[serde(rename = "$value")]
@@ -1154,27 +1376,35 @@ pub struct Layout {
     // #[serde(flatten)] doesn't work with $value fields.
     /// Set the font style.
     #[serde(rename = "@font-style")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_style: Option<FontStyle>,
     /// Choose normal or small caps.
     #[serde(rename = "@font-variant")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_variant: Option<FontVariant>,
     /// Set the font weight.
     #[serde(rename = "@font-weight")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_weight: Option<FontWeight>,
     /// Choose underlining.
     #[serde(rename = "@text-decoration")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_decoration: Option<TextDecoration>,
     /// Choose vertical alignment.
     #[serde(rename = "@vertical-align")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vertical_align: Option<VerticalAlign>,
     /// The prefix.
     #[serde(rename = "@prefix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
     /// The suffix.
     #[serde(rename = "@suffix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub suffix: Option<String>,
     /// Delimit pieces of the output.
     #[serde(rename = "@delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delimiter: Option<String>,
 }
 
@@ -1243,7 +1473,7 @@ impl RendersYearSuffix {
 }
 
 /// Possible parts of a formatting rule.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum LayoutRenderingElement {
     /// Insert a term or variable.
@@ -1314,7 +1544,7 @@ impl LayoutRenderingElement {
 }
 
 /// Rendering elements.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum RenderingElement {
     /// A layout element.
@@ -1324,7 +1554,7 @@ pub enum RenderingElement {
 }
 
 /// Print a term or variable.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Text {
     /// The term or variable to print.
     #[serde(flatten)]
@@ -1337,6 +1567,7 @@ pub struct Text {
     pub affixes: Affixes,
     /// Set layout level.
     #[serde(rename = "@display")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<Display>,
     /// Whether to wrap this text in quotes.
     ///
@@ -1350,6 +1581,7 @@ pub struct Text {
     pub strip_periods: bool,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
 }
 
@@ -1372,7 +1604,7 @@ to_formatting!(Text);
 to_affixes!(Text);
 
 /// Various kinds of text targets.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum TextTarget {
     /// Prints the value of a variable.
@@ -1427,17 +1659,20 @@ impl From<Term> for TextTarget {
 }
 
 /// Formats a date.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Date {
     /// The date to format.
     #[serde(rename = "@variable")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub variable: Option<DateVariable>,
     /// How the localized date should be formatted.
     #[serde(rename = "@form")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub form: Option<DateForm>,
     /// Which parts of the localized date should be included.
     #[serde(rename = "@date-parts")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parts: Option<DateParts>,
     /// Override the default date parts. Also specifies the order of the parts
     /// if `form` is `None`.
@@ -1451,12 +1686,15 @@ pub struct Date {
     pub affixes: Affixes,
     /// Delimit pieces of the output. Ignored when this defines a localized date format.
     #[serde(rename = "@delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delimiter: Option<String>,
     /// Set layout level.
     #[serde(rename = "@display")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<Display>,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
 }
 
@@ -1471,7 +1709,7 @@ impl Date {
 }
 
 /// Localized date formats.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateForm {
     /// “12-15-2005”
@@ -1481,7 +1719,7 @@ pub enum DateForm {
 }
 
 /// Which parts of a date should be included.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[allow(missing_docs)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateParts {
@@ -1504,16 +1742,18 @@ impl DateParts {
 }
 
 /// Override the default date parts.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct DatePart {
     /// Kind of the date part.
     #[serde(rename = "@name")]
     pub name: DatePartName,
     /// Form of the date part.
     #[serde(rename = "@form")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     form: Option<DateAnyForm>,
     /// The string used to delimit two date parts.
     #[serde(rename = "@range-delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub range_delimiter: Option<String>,
     /// Override formatting style.
     #[serde(flatten)]
@@ -1528,6 +1768,7 @@ pub struct DatePart {
     pub strip_periods: bool,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
 }
 
@@ -1546,7 +1787,7 @@ impl DatePart {
 
 /// The kind of a date part with its `form` attribute.
 #[allow(missing_docs)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DatePartName {
     Day,
@@ -1555,7 +1796,7 @@ pub enum DatePartName {
 }
 
 /// Any allowable date part format.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateAnyForm {
     /// “1”
@@ -1630,7 +1871,7 @@ impl DateAnyForm {
 }
 
 /// How a day is formatted.
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateDayForm {
     /// “1”
@@ -1643,7 +1884,7 @@ pub enum DateDayForm {
 }
 
 /// How a month is formatted.
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateMonthForm {
     /// “January”
@@ -1658,7 +1899,7 @@ pub enum DateMonthForm {
 }
 
 /// Whether to format something in long or short form.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(missing_docs)]
 pub enum LongShortForm {
@@ -1668,7 +1909,7 @@ pub enum LongShortForm {
 }
 
 /// Renders a number.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Number {
     /// The variable whose value is used.
@@ -1685,9 +1926,11 @@ pub struct Number {
     pub affixes: Affixes,
     /// Set layout level.
     #[serde(rename = "@display")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<Display>,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
 }
 
@@ -1695,7 +1938,7 @@ to_formatting!(Number);
 to_affixes!(Number);
 
 /// How a number is formatted.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NumberForm {
     /// “1”
@@ -1710,22 +1953,27 @@ pub enum NumberForm {
 }
 
 /// Renders a list of names.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Names {
     /// The variable whose value is used.
     #[serde(rename = "@variable")]
     pub variable: Vec<NameVariable>,
     /// How the names are formatted.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<Name>,
     /// Configuration of the et al. abbreviation.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub et_al: Option<EtAl>,
     /// Substitutions in case the variable is empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub substitute: Option<Substitute>,
     /// Label for the names.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<VariablelessLabel>,
     /// Delimiter between names.
     #[serde(rename = "@delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     delimiter: Option<String>,
     /// Options for the names within.
     #[serde(flatten)]
@@ -1738,6 +1986,7 @@ pub struct Names {
     pub affixes: Affixes,
     /// Set layout level.
     #[serde(rename = "@display")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<Display>,
 }
 
@@ -1786,14 +2035,16 @@ to_formatting!(Names);
 to_affixes!(Names);
 
 /// Configuration of how to print names.
-#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case", default)]
 pub struct Name {
     /// Delimiter between names.
     #[serde(rename = "@delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     delimiter: Option<String>,
     /// Which name parts to display for personal names.
     #[serde(rename = "@form")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub form: Option<NameForm>,
     /// Name parts for formatting for the given and family name.
     #[serde(rename = "name-part")]
@@ -1861,26 +2112,32 @@ impl Name {
 }
 
 /// Global configuration of how to print names.
-#[derive(Debug, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(default)]
 pub struct InheritableNameOptions {
     /// Delimiter between second-to-last and last name.
     #[serde(rename = "@and")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub and: Option<NameAnd>,
     /// Delimiter inherited to `cs:name` elements.
     #[serde(rename = "@name-delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name_delimiter: Option<String>,
     /// Delimiter inherited to `cs:names` elements.
     #[serde(rename = "@names-delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub names_delimiter: Option<String>,
     /// Delimiter before et al.
     #[serde(rename = "@delimiter-precedes-et-al")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delimiter_precedes_et_al: Option<DelimiterBehavior>,
     /// Whether to use the delimiter before the last name.
     #[serde(rename = "@delimiter-precedes-last")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delimiter_precedes_last: Option<DelimiterBehavior>,
     /// Minimum number of names to use et al.
     #[serde(rename = "@et-al-min", deserialize_with = "deserialize_u32_option", default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub et_al_min: Option<u32>,
     /// Maximum number of names to use before et al.
     #[serde(
@@ -1888,6 +2145,7 @@ pub struct InheritableNameOptions {
         deserialize_with = "deserialize_u32_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub et_al_use_first: Option<u32>,
     /// Minimum number of names to use et al. for repeated citations.
     #[serde(
@@ -1895,6 +2153,7 @@ pub struct InheritableNameOptions {
         deserialize_with = "deserialize_u32_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub et_al_subsequent_min: Option<u32>,
     /// Maximum number of names to use before et al. for repeated citations.
     #[serde(
@@ -1902,6 +2161,7 @@ pub struct InheritableNameOptions {
         deserialize_with = "deserialize_u32_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub et_al_subsequent_use_first: Option<u32>,
     /// Whether to use the last name in the author list when there are at least
     /// `et_al_min` names.
@@ -1910,9 +2170,11 @@ pub struct InheritableNameOptions {
         deserialize_with = "deserialize_bool_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub et_al_use_last: Option<bool>,
     /// Which name parts to display for personal names.
     #[serde(rename = "@name-form")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name_form: Option<NameForm>,
     /// Whether to initialize the first name if `initialize-with` is Some.
     #[serde(
@@ -1920,16 +2182,20 @@ pub struct InheritableNameOptions {
         deserialize_with = "deserialize_bool_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub initialize: Option<bool>,
     /// String to initialize the first name with.
     #[serde(rename = "@initialize-with")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub initialize_with: Option<String>,
     /// Whether to turn the name around.
     #[serde(rename = "@name-as-sort-order")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name_as_sort_order: Option<NameAsSortOrder>,
     /// Delimiter between given name and first name. Only used if
     /// `name-as-sort-order` is Some.
     #[serde(rename = "@sort-separator")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub sort_separator: Option<String>,
 }
 
@@ -2028,7 +2294,7 @@ impl NameOptions<'_> {
 }
 
 /// How to render the delimiter before the last name.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NameAnd {
     /// Use the string "and".
@@ -2038,7 +2304,7 @@ pub enum NameAnd {
 }
 
 /// When delimiters shall be inserted.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DelimiterBehavior {
     /// Only used for lists with more than one (`-precedes-et-al`) or two
@@ -2054,7 +2320,7 @@ pub enum DelimiterBehavior {
 }
 
 /// How many name parts to print.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NameForm {
     /// Print all name parts
@@ -2067,7 +2333,7 @@ pub enum NameForm {
 }
 
 /// In which order to print the names.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NameAsSortOrder {
     /// Only the first name is turned around.
@@ -2077,7 +2343,7 @@ pub enum NameAsSortOrder {
 }
 
 /// How to format a given name part.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct NamePart {
     /// Which name part this applies to.
@@ -2091,6 +2357,7 @@ pub struct NamePart {
     pub affixes: Affixes,
     /// Transform the text case.
     #[serde(rename = "@text-case")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
 }
 
@@ -2098,7 +2365,7 @@ to_formatting!(NamePart);
 to_affixes!(NamePart);
 
 /// Which part of the name a [`NamePart`] applies to.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NamePartName {
     /// The given name.
@@ -2108,7 +2375,7 @@ pub enum NamePartName {
 }
 
 /// Configure the et al. abbreviation.
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct EtAl {
     /// Which term to use.
     #[serde(rename = "@term", default)]
@@ -2121,7 +2388,7 @@ pub struct EtAl {
 to_formatting!(EtAl);
 
 /// Which term to use for et al.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub enum EtAlTerm {
     /// “et al.”
     #[default]
@@ -2142,7 +2409,7 @@ impl From<EtAlTerm> for Term {
 }
 
 /// What to do if the name variable is empty.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Substitute {
     /// The layout to use instead.
     #[serde(rename = "$value")]
@@ -2150,7 +2417,7 @@ pub struct Substitute {
 }
 
 /// Print a label for a number variable.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Label {
     /// The variable for which to print the label.
     #[serde(rename = "@variable")]
@@ -2161,7 +2428,7 @@ pub struct Label {
 }
 
 /// A label without its variable.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct VariablelessLabel {
     /// What variant of label is chosen.
     #[serde(rename = "@form", default)]
@@ -2177,11 +2444,12 @@ pub struct VariablelessLabel {
     pub affixes: Affixes,
     /// Transform the text case.
     #[serde(rename = "text-case")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
     /// Remove periods from the output.
     ///
     /// Default: `false`
-    #[serde(rename = "strip-periods", default, deserialize_with = "deserialize_bool")]
+    #[serde(rename = "@strip-periods", default, deserialize_with = "deserialize_bool")]
     pub strip_periods: bool,
 }
 
@@ -2189,7 +2457,7 @@ to_formatting!(VariablelessLabel);
 to_affixes!(VariablelessLabel);
 
 /// How to pluralize a label.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum LabelPluralize {
     /// Match plurality of the variable.
@@ -2203,7 +2471,7 @@ pub enum LabelPluralize {
 
 /// A group of formatting instructions that is only shown if no variable is
 /// referenced or at least one referenced variable is populated.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Group {
     /// The formatting instructions.
     #[serde(rename = "$value")]
@@ -2212,30 +2480,39 @@ pub struct Group {
     // #[serde(flatten)] doesn't work with $value fields.
     /// Set the font style.
     #[serde(rename = "@font-style")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_style: Option<FontStyle>,
     /// Choose normal or small caps.
     #[serde(rename = "@font-variant")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_variant: Option<FontVariant>,
     /// Set the font weight.
     #[serde(rename = "@font-weight")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_weight: Option<FontWeight>,
     /// Choose underlining.
     #[serde(rename = "@text-decoration")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_decoration: Option<TextDecoration>,
     /// Choose vertical alignment.
     #[serde(rename = "@vertical-align")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vertical_align: Option<VerticalAlign>,
     /// The prefix.
     #[serde(rename = "@prefix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
     /// The suffix.
     #[serde(rename = "@suffix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub suffix: Option<String>,
     /// Delimit pieces of the output.
     #[serde(rename = "@delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delimiter: Option<String>,
     /// Set layout level.
     #[serde(rename = "@display")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<Display>,
 }
 
@@ -2243,7 +2520,7 @@ to_formatting!(Group, self);
 to_affixes!(Group, self);
 
 /// A conditional group of formatting instructions.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Choose {
     /// If branch of the conditional group.
     #[serde(rename = "if")]
@@ -2254,9 +2531,11 @@ pub struct Choose {
     pub else_if: Vec<ChooseBranch>,
     /// The formatting instructions to use if no branch matches.
     #[serde(rename = "else")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub otherwise: Option<ElseBranch>,
     /// The delimiter between rendering elements in the chosen branch.
     #[serde(rename = "@delimiter")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub delimiter: Option<String>,
 }
 
@@ -2268,7 +2547,7 @@ impl Choose {
 }
 
 /// A single branch of a conditional group.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct ChooseBranch {
     /// Other than this choose, two elements would result in the same
     /// rendering.
@@ -2277,26 +2556,33 @@ pub struct ChooseBranch {
         deserialize_with = "deserialize_bool_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub disambiguate: Option<bool>,
     /// The variable contains numeric data.
     #[serde(rename = "@is-numeric")]
     /// The variable contains an approximate date.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub is_numeric: Option<Vec<Variable>>,
     /// The variable contains an approximate date.
     #[serde(rename = "@is-uncertain-date")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub is_uncertain_date: Option<Vec<DateVariable>>,
     /// The locator matches the given type.
     #[serde(rename = "@locator")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub locator: Option<Vec<Locator>>,
     /// Tests the position of this citation in the citations to the same item.
     /// Only ever true for citations.
     #[serde(rename = "@position")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub position: Option<Vec<TestPosition>>,
     /// Tests whether the item is of a certain type.
     #[serde(rename = "@type")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub type_: Option<Vec<Kind>>,
     #[serde(rename = "@variable")]
     /// Tests whether the default form of this variable is non-empty.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub variable: Option<Vec<Variable>>,
     /// How to handle the set of tests.
     #[serde(rename = "@match")]
@@ -2334,7 +2620,7 @@ impl ChooseBranch {
 }
 
 /// The formatting instructions to use if no branch matches.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct ElseBranch {
     /// The formatting instructions.
     #[serde(rename = "$value")]
@@ -2363,7 +2649,7 @@ pub enum ChooseTest<'a> {
 }
 
 /// Possible positions of a citation in the citations to the same item.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TestPosition {
     /// The first citation to the item.
@@ -2379,7 +2665,7 @@ pub enum TestPosition {
 }
 
 /// How to handle the set of tests in a conditional group.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ChooseMatch {
     /// All tests must match.
@@ -2403,7 +2689,7 @@ impl ChooseMatch {
 }
 
 /// A reusable set of formatting instructions.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct CslMacro {
     /// The name of the macro.
     #[serde(rename = "@name")]
@@ -2423,7 +2709,7 @@ impl CslMacro {
 }
 
 /// Root element of a locale file.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct LocaleFile {
     /// The version of the locale file.
@@ -2433,40 +2719,69 @@ pub struct LocaleFile {
     #[serde(rename = "@lang")]
     pub lang: LocaleCode,
     /// Metadata of the locale.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<LocaleInfo>,
     /// The terms used in the locale.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub terms: Option<Terms>,
     /// How to format dates in the locale file.
     #[serde(default)]
     pub date: Vec<Date>,
     /// Style options for the locale.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub style_options: Option<LocaleOptions>,
 }
 
 impl LocaleFile {
     /// Create a locale from a XML string.
-    pub fn from_xml(xml: &str) -> Result<Self, quick_xml::de::DeError> {
+    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
         let locale: Self = quick_xml::de::from_str(xml)?;
         Ok(locale)
+    }
+
+    /// Write the locale to an XML file.
+    pub fn to_xml(&self) -> Result<String, XmlSerdeError> {
+        let mut buf = String::new();
+        let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
+        self.serialize(ser)?;
+        Ok(buf)
+    }
+
+    /// Create a locale from a CBOR file.
+    #[cfg(feature = "ciborium")]
+    pub fn from_cbor(reader: &[u8]) -> Result<Self, CborDeserializeError> {
+        ciborium::de::from_reader(reader)
+    }
+
+    /// Write the locale to a CBOR file.
+    #[cfg(feature = "ciborium")]
+    pub fn to_cbor(&self) -> Result<Vec<u8>, CborSerializeError> {
+        let mut buf = Vec::new();
+        ciborium::ser::into_writer(self, &mut buf)?;
+        Ok(buf)
     }
 }
 
 /// Supplemental localization data in a citation style.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Locale {
     /// Which languages or dialects this data applies to. Must be `Some` if this
     /// appears in a locale file.
     #[serde(rename = "@lang")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<LocaleCode>,
     /// Metadata of the locale.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub info: Option<LocaleInfo>,
     /// The terms used in the locale.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub terms: Option<Terms>,
     /// How to format dates in the locale file.
     #[serde(default)]
     pub date: Vec<Date>,
     /// Style options for the locale.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub style_options: Option<LocaleOptions>,
 }
 
@@ -2486,6 +2801,20 @@ impl Locale {
                 OrdinalLookup::new(terms.terms.iter().filter(|t| t.name.is_ordinal()))
             })
         })
+    }
+
+    /// Create a locale from a CBOR file.
+    #[cfg(feature = "ciborium")]
+    pub fn from_cbor(reader: &[u8]) -> Result<Self, CborDeserializeError> {
+        ciborium::de::from_reader(reader)
+    }
+
+    /// Write the locale to a CBOR file.
+    #[cfg(feature = "ciborium")]
+    pub fn to_cbor(&self) -> Result<Vec<u8>, CborSerializeError> {
+        let mut buf = Vec::new();
+        ciborium::ser::into_writer(self, &mut buf)?;
+        Ok(buf)
     }
 }
 
@@ -2651,20 +2980,22 @@ impl TryFrom<Locale> for LocaleFile {
 }
 
 /// Metadata of a locale.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct LocaleInfo {
     /// The translators of the locale.
     #[serde(rename = "translator")]
     #[serde(default)]
     pub translators: Vec<StyleAttribution>,
     /// The license under which the locale is published.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub rights: Option<License>,
     /// When the locale was last updated.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub updated: Option<Timestamp>,
 }
 
 /// Term localization container.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Terms {
     /// The terms.
     #[serde(rename = "term")]
@@ -2672,29 +3003,35 @@ pub struct Terms {
 }
 
 /// A localized term.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct LocalizedTerm {
     /// The term key.
     #[serde(rename = "@name")]
     pub name: Term,
     /// The localization.
     #[serde(rename = "$text")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     localization: Option<String>,
     /// The singular variant.
+    #[serde(skip_serializing_if = "Option::is_none")]
     single: Option<String>,
     /// The plural variant.
+    #[serde(skip_serializing_if = "Option::is_none")]
     multiple: Option<String>,
     /// The variant of this term translation.
     #[serde(rename = "@form", default)]
     pub form: TermForm,
     /// Specify the when this ordinal term is used.
     #[serde(rename = "@match")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub match_: Option<OrdinalMatch>,
     /// Specify for which grammatical gender this term has to get corresponding ordinals
     #[serde(rename = "@gender")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gender: Option<GrammarGender>,
     /// Specify which grammatical gender this ordinal term matches
     #[serde(rename = "@gender-form")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub gender_form: Option<GrammarGender>,
 }
 
@@ -2713,7 +3050,7 @@ impl LocalizedTerm {
 }
 
 /// The variant of a term translation.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TermForm {
     /// The default variant.
@@ -2743,7 +3080,7 @@ impl TermForm {
 }
 
 /// Specify when which ordinal term is used.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum OrdinalMatch {
     /// Match the last digit for ordinal terms between zero and nine and the
@@ -2758,7 +3095,7 @@ pub enum OrdinalMatch {
 
 /// A grammatical gender. Use `None` for neutral.
 #[allow(missing_docs)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum GrammarGender {
     Feminine,
@@ -2766,7 +3103,7 @@ pub enum GrammarGender {
 }
 
 /// Options for the locale.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct LocaleOptions {
     /// Only use ordinals for the first day in a month.
     ///
@@ -2776,6 +3113,7 @@ pub struct LocaleOptions {
         deserialize_with = "deserialize_bool_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit_day_ordinals_to_day_1: Option<bool>,
     /// Whether to place punctuation inside of quotation marks.
     ///
@@ -2785,26 +3123,32 @@ pub struct LocaleOptions {
         deserialize_with = "deserialize_bool_option",
         default
     )]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub punctuation_in_quote: Option<bool>,
 }
 
 /// Formatting properties.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Formatting {
     /// Set the font style.
     #[serde(rename = "@font-style")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_style: Option<FontStyle>,
     /// Choose normal or small caps.
     #[serde(rename = "@font-variant")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_variant: Option<FontVariant>,
     /// Set the font weight.
     #[serde(rename = "@font-weight")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub font_weight: Option<FontWeight>,
     /// Choose underlining.
     #[serde(rename = "@text-decoration")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text_decoration: Option<TextDecoration>,
     /// Choose vertical alignment.
     #[serde(rename = "@vertical-align")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub vertical_align: Option<VerticalAlign>,
 }
 
@@ -2831,7 +3175,7 @@ impl Formatting {
 }
 
 /// Font style.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FontStyle {
     /// Normal font style.
@@ -2842,7 +3186,7 @@ pub enum FontStyle {
 }
 
 /// Font variant.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum FontVariant {
     /// Normal font variant.
@@ -2853,7 +3197,7 @@ pub enum FontVariant {
 }
 
 /// Font weight.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FontWeight {
     /// Normal font weight.
@@ -2866,7 +3210,7 @@ pub enum FontWeight {
 }
 
 /// Text decoration.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TextDecoration {
     /// No text decoration.
@@ -2877,7 +3221,7 @@ pub enum TextDecoration {
 }
 
 /// Vertical alignment.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum VerticalAlign {
     /// No vertical alignment.
@@ -2893,18 +3237,20 @@ pub enum VerticalAlign {
 }
 
 /// Prefixes and suffixes.
-#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 pub struct Affixes {
     /// The prefix.
     #[serde(rename = "@prefix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix: Option<String>,
     /// The suffix.
     #[serde(rename = "@suffix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub suffix: Option<String>,
 }
 
 /// On which layout level to display the citation.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Display {
     /// Block stretching from margin to margin.
@@ -2918,7 +3264,7 @@ pub enum Display {
 }
 
 /// How to format text.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum TextCase {
     /// lowecase.
@@ -3039,5 +3385,96 @@ mod test {
     #[test]
     fn test_locale() {
         check_locale("tests/locales");
+    }
+
+    /// Be sure to check out the CSL
+    /// [styles](https://github.com/citation-style-language/locales) repository
+    /// into a sibling folder to run this test.
+    #[test]
+    #[cfg(feature = "ciborium")]
+    fn roundtrip_cbor_all() {
+        fs::create_dir_all("tests/artifacts/styles").unwrap();
+        for style_thing in
+            fs::read_dir("../styles/").expect("please check out the CSL styles repo")
+        {
+            let thing = style_thing.unwrap();
+            if thing.file_type().unwrap().is_dir() {
+                continue;
+            }
+
+            let path = thing.path();
+            let extension = path.extension();
+            if let Some(extension) = extension {
+                if extension.to_str() != Some("csl") {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
+            eprintln!("Testing {}", path.display());
+            let source = fs::read_to_string(&path).unwrap();
+            let style = Style::from_xml(&source).unwrap();
+            let cbor = style.to_cbor().unwrap();
+            fs::write(
+                format!(
+                    "tests/artifacts/styles/{}.cbor",
+                    path.file_stem().unwrap().to_str().unwrap()
+                ),
+                &cbor,
+            )
+            .unwrap();
+            let style2: Style = Style::from_cbor(&cbor).unwrap();
+            assert_eq!(style, style2);
+        }
+    }
+
+    /// Be sure to check out the CSL
+    /// [locales](https://github.com/citation-style-language/locales) repository
+    /// into a sibling folder to run this test.
+    #[test]
+    #[cfg(feature = "ciborium")]
+    fn roundtrip_cbor_all_locales() {
+        fs::create_dir_all("tests/artifacts/locales").unwrap();
+        for style_thing in
+            fs::read_dir("../locales/").expect("please check out the CSL locales repo")
+        {
+            let thing = style_thing.unwrap();
+            if thing.file_type().unwrap().is_dir() {
+                continue;
+            }
+
+            let path = thing.path();
+            let extension = path.extension();
+            if let Some(extension) = extension {
+                if extension.to_str() != Some("xml")
+                    || !path
+                        .file_stem()
+                        .unwrap()
+                        .to_str()
+                        .unwrap()
+                        .starts_with("locales-")
+                {
+                    continue;
+                }
+            } else {
+                continue;
+            }
+
+            eprintln!("Testing {}", path.display());
+            let source = fs::read_to_string(&path).unwrap();
+            let locale = LocaleFile::from_xml(&source).unwrap();
+            let cbor = locale.to_cbor().unwrap();
+            fs::write(
+                format!(
+                    "tests/artifacts/locales/{}.cbor",
+                    path.file_stem().unwrap().to_str().unwrap()
+                ),
+                &cbor,
+            )
+            .unwrap();
+            let locale2 = LocaleFile::from_cbor(&cbor).unwrap();
+            assert_eq!(locale, locale2);
+        }
     }
 }

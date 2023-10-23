@@ -3,10 +3,10 @@
 use std::num::IntErrorKind;
 use std::{fmt, str::FromStr};
 
-use serde::{de, Deserialize, Deserializer};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
 /// A CSL variable.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Variable {
     /// The set of variables with no other attributes.
@@ -32,7 +32,7 @@ impl Variable {
 }
 
 /// The set of variables with no other attributes.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum StandardVariable {
     /// Abstract of the item (e.g. the abstract of a journal article).
@@ -185,7 +185,7 @@ impl From<StandardVariable> for Variable {
 }
 
 /// Variables that can be formatted as numbers.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NumberVariable {
     /// Chapter number (e.g. chapter number in a book; track number on an
@@ -267,7 +267,7 @@ impl From<NumberVariable> for Term {
 }
 
 /// Variables that can be formatted as dates.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum DateVariable {
     /// Date the item has been accessed.
@@ -293,7 +293,7 @@ impl From<DateVariable> for Variable {
 }
 
 /// Variables that can be formatted as names.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NameVariable {
     /// Author.
@@ -378,7 +378,7 @@ impl From<NameVariable> for Term {
 }
 
 /// Localizable terms.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Term {
     /// Kind of the cited item.
@@ -445,7 +445,7 @@ impl Term {
 }
 
 /// Kind of the cited item.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 
 pub enum Kind {
@@ -619,7 +619,7 @@ impl From<Kind> for Term {
 }
 
 /// A locator.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(missing_docs)]
 pub enum Locator {
@@ -939,6 +939,94 @@ impl FromStr for OtherTerm {
     }
 }
 
+impl fmt::Display for OtherTerm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ordinal => write!(f, "ordinal"),
+            Self::OpenQuote => write!(f, "open-quote"),
+            Self::CloseQuote => write!(f, "close-quote"),
+            Self::OpenInnerQuote => write!(f, "open-inner-quote"),
+            Self::CloseInnerQuote => write!(f, "close-inner-quote"),
+            Self::PageRangeDelimiter => write!(f, "page-range-delimiter"),
+            Self::Colon => write!(f, "colon"),
+            Self::Comma => write!(f, "comma"),
+            Self::Semicolon => write!(f, "semicolon"),
+            Self::Accessed => write!(f, "accessed"),
+            Self::Ad => write!(f, "ad"),
+            Self::AdvanceOnlinePublication => write!(f, "advance-online-publication"),
+            Self::Album => write!(f, "album"),
+            Self::And => write!(f, "and"),
+            Self::AndOthers => write!(f, "and-others"),
+            Self::Anonymous => write!(f, "anonymous"),
+            Self::At => write!(f, "at"),
+            Self::AudioRecording => write!(f, "audio-recording"),
+            Self::AvailableAt => write!(f, "available at"),
+            Self::Bc => write!(f, "bc"),
+            Self::Bce => write!(f, "bce"),
+            Self::By => write!(f, "by"),
+            Self::Ce => write!(f, "ce"),
+            Self::Circa => write!(f, "circa"),
+            Self::Cited => write!(f, "cited"),
+            Self::EtAl => write!(f, "et-al"),
+            Self::Film => write!(f, "film"),
+            Self::Forthcoming => write!(f, "forthcoming"),
+            Self::From => write!(f, "from"),
+            Self::Henceforth => write!(f, "henceforth"),
+            Self::Ibid => write!(f, "ibid"),
+            Self::In => write!(f, "in"),
+            Self::InPress => write!(f, "in press"),
+            Self::Internet => write!(f, "internet"),
+            Self::Interview => write!(f, "interview"),
+            Self::Letter => write!(f, "letter"),
+            Self::LocCit => write!(f, "loc-cit"),
+            Self::NoDate => write!(f, "no date"),
+            Self::NoPlace => write!(f, "no-place"),
+            Self::NoPublisher => write!(f, "no-publisher"),
+            Self::On => write!(f, "on"),
+            Self::Online => write!(f, "online"),
+            Self::OpCit => write!(f, "op-cit"),
+            Self::OriginalWorkPublished => write!(f, "original-work-published"),
+            Self::PersonalCommunication => write!(f, "personal-communication"),
+            Self::Podcast => write!(f, "podcast"),
+            Self::PodcastEpisode => write!(f, "podcast-episode"),
+            Self::Preprint => write!(f, "preprint"),
+            Self::PresentedAt => write!(f, "presented at"),
+            Self::RadioBroadcast => write!(f, "radio-broadcast"),
+            Self::RadioSeries => write!(f, "radio-series"),
+            Self::RadioSeriesEpisode => write!(f, "radio-series-episode"),
+            Self::Reference => write!(f, "reference"),
+            Self::Retrieved => write!(f, "retrieved"),
+            Self::ReviewOf => write!(f, "review-of"),
+            Self::Scale => write!(f, "scale"),
+            Self::SpecialIssue => write!(f, "special-issue"),
+            Self::SpecialSection => write!(f, "special-section"),
+            Self::TelevisionBroadcast => write!(f, "television-broadcast"),
+            Self::TelevisionSeries => write!(f, "television-series"),
+            Self::TelevisionSeriesEpisode => write!(f, "television-series-episode"),
+            Self::Video => write!(f, "video"),
+            Self::WorkingPaper => write!(f, "working-paper"),
+            Self::OrdinalN(i) => write!(f, "ordinal-{:02}", i),
+            Self::LongOrdinal(i) => write!(f, "long-ordinal-{:02}", i),
+            Self::Season01 => write!(f, "season-01"),
+            Self::Season02 => write!(f, "season-02"),
+            Self::Season03 => write!(f, "season-03"),
+            Self::Season04 => write!(f, "season-04"),
+            Self::Month01 => write!(f, "month-01"),
+            Self::Month02 => write!(f, "month-02"),
+            Self::Month03 => write!(f, "month-03"),
+            Self::Month04 => write!(f, "month-04"),
+            Self::Month05 => write!(f, "month-05"),
+            Self::Month06 => write!(f, "month-06"),
+            Self::Month07 => write!(f, "month-07"),
+            Self::Month08 => write!(f, "month-08"),
+            Self::Month09 => write!(f, "month-09"),
+            Self::Month10 => write!(f, "month-10"),
+            Self::Month11 => write!(f, "month-11"),
+            Self::Month12 => write!(f, "month-12"),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for OtherTerm {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -946,6 +1034,15 @@ impl<'de> Deserialize<'de> for OtherTerm {
     {
         let s = String::deserialize(deserializer)?;
         FromStr::from_str(&s).map_err(de::Error::custom)
+    }
+}
+
+impl Serialize for OtherTerm {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_str(self)
     }
 }
 

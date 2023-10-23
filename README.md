@@ -34,6 +34,11 @@ if let Style::Independent(independent) = style {
 }
 ```
 
+Be sure to check out the CSL
+[styles](https://github.com/citation-style-language/styles) and
+[locales](https://github.com/citation-style-language/locales) repositories into
+sibling folders of `citationberg` if you want to run the tests.
+
 ## Safety
 This crate forbids unsafe code.
 
