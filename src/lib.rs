@@ -1513,7 +1513,7 @@ impl LayoutRenderingElement {
                 _ => RendersYearSuffix::No,
             },
             Self::Names(n) => n
-                .substitute
+                .substitute()
                 .as_ref()
                 .and_then(|n| {
                     n.children
@@ -1959,31 +1959,119 @@ pub struct Names {
     /// The variable whose value is used.
     #[serde(rename = "@variable")]
     pub variable: Vec<NameVariable>,
-    /// How the names are formatted.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<Name>,
-    /// Configuration of the et al. abbreviation.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub et_al: Option<EtAl>,
-    /// Substitutions in case the variable is empty.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub substitute: Option<Substitute>,
-    /// Label for the names.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<VariablelessLabel>,
+    /// Child elements.
+    #[serde(rename = "$value", default)]
+    pub children: Vec<NamesChild>,
     /// Delimiter between names.
     #[serde(rename = "@delimiter")]
     #[serde(skip_serializing_if = "Option::is_none")]
     delimiter: Option<String>,
-    /// Options for the names within.
-    #[serde(flatten)]
-    pub options: InheritableNameOptions,
-    /// Override formatting style.
-    #[serde(flatten)]
-    pub formatting: Formatting,
-    /// Add prefix and suffix.
-    #[serde(flatten)]
-    pub affixes: Affixes,
+
+    /// Delimiter between second-to-last and last name.
+    #[serde(rename = "@and")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub and: Option<NameAnd>,
+    /// Delimiter before et al.
+    #[serde(rename = "@delimiter-precedes-et-al")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delimiter_precedes_et_al: Option<DelimiterBehavior>,
+    /// Whether to use the delimiter before the last name.
+    #[serde(rename = "@delimiter-precedes-last")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delimiter_precedes_last: Option<DelimiterBehavior>,
+    /// Minimum number of names to use et al.
+    #[serde(rename = "@et-al-min", deserialize_with = "deserialize_u32_option", default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub et_al_min: Option<u32>,
+    /// Maximum number of names to use before et al.
+    #[serde(
+        rename = "@et-al-use-first",
+        deserialize_with = "deserialize_u32_option",
+        default
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub et_al_use_first: Option<u32>,
+    /// Minimum number of names to use et al. for repeated citations.
+    #[serde(
+        rename = "@et-al-subsequent-min",
+        deserialize_with = "deserialize_u32_option",
+        default
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub et_al_subsequent_min: Option<u32>,
+    /// Maximum number of names to use before et al. for repeated citations.
+    #[serde(
+        rename = "@et-al-subsequent-use-first",
+        deserialize_with = "deserialize_u32_option",
+        default
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub et_al_subsequent_use_first: Option<u32>,
+    /// Whether to use the last name in the author list when there are at least
+    /// `et_al_min` names.
+    #[serde(
+        rename = "@et-al-use-last",
+        deserialize_with = "deserialize_bool_option",
+        default
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub et_al_use_last: Option<bool>,
+    /// Which name parts to display for personal names.
+    #[serde(rename = "@name-form")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_form: Option<NameForm>,
+    /// Whether to initialize the first name if `initialize-with` is Some.
+    #[serde(
+        rename = "@initialize",
+        deserialize_with = "deserialize_bool_option",
+        default
+    )]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initialize: Option<bool>,
+    /// String to initialize the first name with.
+    #[serde(rename = "@initialize-with")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initialize_with: Option<String>,
+    /// Whether to turn the name around.
+    #[serde(rename = "@name-as-sort-order")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name_as_sort_order: Option<NameAsSortOrder>,
+    /// Delimiter between given name and first name. Only used if
+    /// `name-as-sort-order` is Some.
+    #[serde(rename = "@sort-separator")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort_separator: Option<String>,
+
+    /// Set the font style.
+    #[serde(rename = "@font-style")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_style: Option<FontStyle>,
+    /// Choose normal or small caps.
+    #[serde(rename = "@font-variant")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_variant: Option<FontVariant>,
+    /// Set the font weight.
+    #[serde(rename = "@font-weight")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_weight: Option<FontWeight>,
+    /// Choose underlining.
+    #[serde(rename = "@text-decoration")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_decoration: Option<TextDecoration>,
+    /// Choose vertical alignment.
+    #[serde(rename = "@vertical-align")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vertical_align: Option<VerticalAlign>,
+
+    /// The prefix.
+    #[serde(rename = "@prefix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+    /// The suffix.
+    #[serde(rename = "@suffix")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub suffix: Option<String>,
+
     /// Set layout level.
     #[serde(rename = "@display")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1999,40 +2087,139 @@ impl Names {
             .unwrap_or_default()
     }
 
+    /// Return the name element.
+    pub fn name(&self) -> Option<&Name> {
+        self.children.iter().find_map(|c| match c {
+            NamesChild::Name(n) => Some(n),
+            _ => None,
+        })
+    }
+
+    /// Return the et-al element.
+    pub fn et_al(&self) -> Option<&EtAl> {
+        self.children.iter().find_map(|c| match c {
+            NamesChild::EtAl(e) => Some(e),
+            _ => None,
+        })
+    }
+
+    /// Return the label element.
+    pub fn label(&self) -> Option<(&VariablelessLabel, NameLabelPosition)> {
+        let mut pos = NameLabelPosition::BeforeName;
+        self.children.iter().find_map(|c| match c {
+            NamesChild::Label(l) => Some((l, pos)),
+            NamesChild::Name(_) => {
+                pos = NameLabelPosition::AfterName;
+                None
+            }
+            _ => None,
+        })
+    }
+
+    /// Return the substitute element.
+    pub fn substitute(&self) -> Option<&Substitute> {
+        self.children.iter().find_map(|c| match c {
+            NamesChild::Substitute(s) => Some(s),
+            _ => None,
+        })
+    }
+
+    /// Return the inheritable name options.
+    pub fn options(&self) -> InheritableNameOptions {
+        InheritableNameOptions {
+            and: self.and,
+            delimiter_precedes_et_al: self.delimiter_precedes_et_al,
+            delimiter_precedes_last: self.delimiter_precedes_last,
+            et_al_min: self.et_al_min,
+            et_al_use_first: self.et_al_use_first,
+            et_al_subsequent_min: self.et_al_subsequent_min,
+            et_al_subsequent_use_first: self.et_al_subsequent_use_first,
+            et_al_use_last: self.et_al_use_last,
+            name_form: self.name_form,
+            initialize: self.initialize,
+            initialize_with: self.initialize_with.clone(),
+            name_as_sort_order: self.name_as_sort_order,
+            sort_separator: self.sort_separator.clone(),
+            name_delimiter: None,
+            names_delimiter: self.delimiter.clone(),
+        }
+    }
+
     /// Convert a [`Names`] within a substitute to a name using the parent element.
     pub fn from_names_substitue(&self, child: &Self) -> Names {
-        if child.name.is_some() || child.et_al.is_some() || child.substitute.is_some() {
+        if child.name().is_some()
+            || child.et_al().is_some()
+            || child.substitute().is_some()
+        {
             return child.clone();
         }
 
+        let formatting = child.to_formatting().apply(self.to_formatting());
+        let options = self.options().apply(&child.options());
+
         Names {
             variable: child.variable.clone(),
-            name: self.name.clone(),
-            et_al: self.et_al,
-            substitute: None,
-            label: child.label.clone().or_else(|| self.label.clone()),
+            children: self
+                .children
+                .iter()
+                .filter(|c| !matches!(c, NamesChild::Substitute(_)))
+                .cloned()
+                .collect(),
             delimiter: child.delimiter.clone().or_else(|| self.delimiter.clone()),
-            options: self.options.apply(&child.options),
-            formatting: child.formatting.apply(self.formatting),
-            affixes: Affixes {
-                prefix: child
-                    .affixes
-                    .prefix
-                    .clone()
-                    .or_else(|| self.affixes.prefix.clone()),
-                suffix: child
-                    .affixes
-                    .suffix
-                    .clone()
-                    .or_else(|| self.affixes.suffix.clone()),
-            },
+
+            and: options.and,
+            delimiter_precedes_et_al: options.delimiter_precedes_et_al,
+            delimiter_precedes_last: options.delimiter_precedes_last,
+            et_al_min: options.et_al_min,
+            et_al_use_first: options.et_al_use_first,
+            et_al_subsequent_min: options.et_al_subsequent_min,
+            et_al_subsequent_use_first: options.et_al_subsequent_use_first,
+            et_al_use_last: options.et_al_use_last,
+            name_form: options.name_form,
+            initialize: options.initialize,
+            initialize_with: options.initialize_with,
+            name_as_sort_order: options.name_as_sort_order,
+            sort_separator: options.sort_separator,
+
+            font_style: formatting.font_style,
+            font_variant: formatting.font_variant,
+            font_weight: formatting.font_weight,
+            text_decoration: formatting.text_decoration,
+            vertical_align: formatting.vertical_align,
+
+            prefix: child.prefix.clone().or_else(|| self.prefix.clone()),
+            suffix: child.suffix.clone().or_else(|| self.suffix.clone()),
             display: child.display.or(self.display),
         }
     }
 }
 
-to_formatting!(Names);
-to_affixes!(Names);
+to_formatting!(Names, self);
+to_affixes!(Names, self);
+
+/// Where the `cs:label` element within a `cs:names` element appeared relative
+/// to `cs:name`.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+pub enum NameLabelPosition {
+    /// The label appeared after the name element.
+    AfterName,
+    /// The label appeared before the name element.
+    BeforeName,
+}
+
+/// Possible children for a `cs:names` element.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum NamesChild {
+    /// A `cs:name` element.
+    Name(Name),
+    /// A `cs:et-al` element.
+    EtAl(EtAl),
+    /// A `cs:label` element.
+    Label(VariablelessLabel),
+    /// A `cs:substitute` element.
+    Substitute(Substitute),
+}
 
 /// Configuration of how to print names.
 #[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
