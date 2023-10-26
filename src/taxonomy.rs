@@ -1,7 +1,8 @@
 //! CSL constants that describe entries, terms, and variables.
 
+use std::fmt;
 use std::num::IntErrorKind;
-use std::{fmt, str::FromStr};
+use std::str::FromStr;
 
 use serde::{de, Deserialize, Deserializer, Serialize};
 
@@ -27,6 +28,17 @@ impl Variable {
             v.is_number_of_variable()
         } else {
             false
+        }
+    }
+}
+
+impl fmt::Display for Variable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Standard(v) => v.fmt(f),
+            Self::Number(v) => v.fmt(f),
+            Self::Date(v) => v.fmt(f),
+            Self::Name(v) => v.fmt(f),
         }
     }
 }
@@ -184,6 +196,60 @@ impl From<StandardVariable> for Variable {
     }
 }
 
+impl fmt::Display for StandardVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Abstract => write!(f, "abstract"),
+            Self::Annote => write!(f, "annote"),
+            Self::Archive => write!(f, "archive"),
+            Self::ArchiveCollection => write!(f, "archive_collection"),
+            Self::ArchiveLocation => write!(f, "archive_location"),
+            Self::ArchivePlace => write!(f, "archive_place"),
+            Self::Authority => write!(f, "authority"),
+            Self::CallNumber => write!(f, "call-number"),
+            Self::CitationKey => write!(f, "citation-key"),
+            Self::CitationLabel => write!(f, "citation-label"),
+            Self::CollectionTitle => write!(f, "collection-title"),
+            Self::ContainerTitle => write!(f, "container-title"),
+            Self::ContainerTitleShort => write!(f, "container-title-short"),
+            Self::Dimensions => write!(f, "dimensions"),
+            Self::Division => write!(f, "division"),
+            Self::DOI => write!(f, "DOI"),
+            Self::Event => write!(f, "event"),
+            Self::EventTitle => write!(f, "event-title"),
+            Self::EventPlace => write!(f, "event-place"),
+            Self::Genre => write!(f, "genre"),
+            Self::ISBN => write!(f, "ISBN"),
+            Self::ISSN => write!(f, "ISSN"),
+            Self::Jurisdiction => write!(f, "jurisdiction"),
+            Self::Keyword => write!(f, "keyword"),
+            Self::Language => write!(f, "language"),
+            Self::License => write!(f, "license"),
+            Self::Medium => write!(f, "medium"),
+            Self::Note => write!(f, "note"),
+            Self::OriginalPublisher => write!(f, "original-publisher"),
+            Self::OriginalPublisherPlace => write!(f, "original-publisher-place"),
+            Self::OriginalTitle => write!(f, "original-title"),
+            Self::PartTitle => write!(f, "part-title"),
+            Self::PMCID => write!(f, "PMCID"),
+            Self::PMID => write!(f, "PMID"),
+            Self::Publisher => write!(f, "publisher"),
+            Self::PublisherPlace => write!(f, "publisher-place"),
+            Self::References => write!(f, "references"),
+            Self::ReviewedGenre => write!(f, "reviewed-genre"),
+            Self::ReviewedTitle => write!(f, "reviewed-title"),
+            Self::Scale => write!(f, "scale"),
+            Self::Source => write!(f, "source"),
+            Self::Status => write!(f, "status"),
+            Self::Title => write!(f, "title"),
+            Self::TitleShort => write!(f, "title-short"),
+            Self::URL => write!(f, "URL"),
+            Self::VolumeTitle => write!(f, "volume-title"),
+            Self::YearSuffix => write!(f, "year-suffix"),
+        }
+    }
+}
+
 /// Variables that can be formatted as numbers.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -246,6 +312,31 @@ pub enum NumberVariable {
     Volume,
 }
 
+impl fmt::Display for NumberVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ChapterNumber => write!(f, "chapter-number"),
+            Self::CitationNumber => write!(f, "citation-number"),
+            Self::CollectionNumber => write!(f, "collection-number"),
+            Self::Edition => write!(f, "edition"),
+            Self::FirstReferenceNoteNumber => write!(f, "first-reference-note-number"),
+            Self::Issue => write!(f, "issue"),
+            Self::Locator => write!(f, "locator"),
+            Self::Number => write!(f, "number"),
+            Self::NumberOfPages => write!(f, "number-of-pages"),
+            Self::NumberOfVolumes => write!(f, "number-of-volumes"),
+            Self::Page => write!(f, "page"),
+            Self::PageFirst => write!(f, "page-first"),
+            Self::PartNumber => write!(f, "part-number"),
+            Self::PrintingNumber => write!(f, "printing-number"),
+            Self::Section => write!(f, "section"),
+            Self::SupplementNumber => write!(f, "supplement-number"),
+            Self::Version => write!(f, "version"),
+            Self::Volume => write!(f, "volume"),
+        }
+    }
+}
+
 impl NumberVariable {
     /// Check if the variable starts with `number-of-` to control contextual
     /// label behavior.
@@ -289,6 +380,19 @@ pub enum DateVariable {
 impl From<DateVariable> for Variable {
     fn from(value: DateVariable) -> Self {
         Self::Date(value)
+    }
+}
+
+impl fmt::Display for DateVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Accessed => write!(f, "accessed"),
+            Self::AvailableDate => write!(f, "available-date"),
+            Self::EventDate => write!(f, "event-date"),
+            Self::Issued => write!(f, "issued"),
+            Self::OriginalDate => write!(f, "original-date"),
+            Self::Submitted => write!(f, "submitted"),
+        }
     }
 }
 
@@ -374,6 +478,40 @@ impl From<NameVariable> for Variable {
 impl From<NameVariable> for Term {
     fn from(value: NameVariable) -> Self {
         Self::NameVariable(value)
+    }
+}
+
+impl fmt::Display for NameVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Author => write!(f, "author"),
+            Self::Chair => write!(f, "chair"),
+            Self::CollectionEditor => write!(f, "collection-editor"),
+            Self::Compiler => write!(f, "compiler"),
+            Self::Composer => write!(f, "composer"),
+            Self::ContainerAuthor => write!(f, "container-author"),
+            Self::Contributor => write!(f, "contributor"),
+            Self::Curator => write!(f, "curator"),
+            Self::Director => write!(f, "director"),
+            Self::Editor => write!(f, "editor"),
+            Self::EditorialDirector => write!(f, "editorial-director"),
+            Self::EditorTranslator => write!(f, "editortranslator"),
+            Self::ExecutiveProducer => write!(f, "executive-producer"),
+            Self::Guest => write!(f, "guest"),
+            Self::Host => write!(f, "host"),
+            Self::Illustrator => write!(f, "illustrator"),
+            Self::Interviewer => write!(f, "interviewer"),
+            Self::Narrator => write!(f, "narrator"),
+            Self::Organizer => write!(f, "organizer"),
+            Self::OriginalAuthor => write!(f, "original-author"),
+            Self::Performer => write!(f, "performer"),
+            Self::Producer => write!(f, "producer"),
+            Self::Recipient => write!(f, "recipient"),
+            Self::ReviewedAuthor => write!(f, "reviewed-author"),
+            Self::ScriptWriter => write!(f, "script-writer"),
+            Self::SeriesCreator => write!(f, "series-creator"),
+            Self::Translator => write!(f, "translator"),
+        }
     }
 }
 
@@ -615,6 +753,61 @@ pub enum Kind {
 impl From<Kind> for Term {
     fn from(value: Kind) -> Self {
         Self::Kind(value)
+    }
+}
+
+impl FromStr for Kind {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "article" => Ok(Self::Article),
+            "article-journal" => Ok(Self::ArticleJournal),
+            "article-magazine" => Ok(Self::ArticleMagazine),
+            "article-newspaper" => Ok(Self::ArticleNewspaper),
+            "bill" => Ok(Self::Bill),
+            "book" => Ok(Self::Book),
+            "broadcast" => Ok(Self::Broadcast),
+            "chapter" => Ok(Self::Chapter),
+            "classic" => Ok(Self::Classic),
+            "collection" => Ok(Self::Collection),
+            "dataset" => Ok(Self::Dataset),
+            "document" => Ok(Self::Document),
+            "entry" => Ok(Self::Entry),
+            "entry-dictionary" => Ok(Self::EntryDictionary),
+            "entry-encyclopedia" => Ok(Self::EntryEncyclopedia),
+            "event" => Ok(Self::Event),
+            "figure" => Ok(Self::Figure),
+            "graphic" => Ok(Self::Graphic),
+            "hearing" => Ok(Self::Hearing),
+            "interview" => Ok(Self::Interview),
+            "legal_case" => Ok(Self::LegalCase),
+            "legislation" => Ok(Self::Legislation),
+            "manuscript" => Ok(Self::Manuscript),
+            "map" => Ok(Self::Map),
+            "motion_picture" => Ok(Self::MotionPicture),
+            "musical_score" => Ok(Self::MusicalScore),
+            "pamphlet" => Ok(Self::Pamphlet),
+            "paper-conference" => Ok(Self::PaperConference),
+            "patent" => Ok(Self::Patent),
+            "performance" => Ok(Self::Performance),
+            "periodical" => Ok(Self::Periodical),
+            "personal_communication" => Ok(Self::PersonalCommunication),
+            "post" => Ok(Self::Post),
+            "post-weblog" => Ok(Self::PostWeblog),
+            "regulation" => Ok(Self::Regulation),
+            "report" => Ok(Self::Report),
+            "review" => Ok(Self::Review),
+            "review-book" => Ok(Self::ReviewBook),
+            "software" => Ok(Self::Software),
+            "song" => Ok(Self::Song),
+            "speech" => Ok(Self::Speech),
+            "standard" => Ok(Self::Standard),
+            "thesis" => Ok(Self::Thesis),
+            "treaty" => Ok(Self::Treaty),
+            "webpage" => Ok(Self::Webpage),
+            _ => Err(()),
+        }
     }
 }
 
