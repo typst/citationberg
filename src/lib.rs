@@ -2630,7 +2630,7 @@ pub struct VariablelessLabel {
     #[serde(flatten)]
     pub affixes: Affixes,
     /// Transform the text case.
-    #[serde(rename = "text-case")]
+    #[serde(rename = "@text-case")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_case: Option<TextCase>,
     /// Remove periods from the output.
