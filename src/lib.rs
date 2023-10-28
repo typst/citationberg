@@ -1957,7 +1957,7 @@ pub enum NumberForm {
 #[serde(rename_all = "kebab-case")]
 pub struct Names {
     /// The variable whose value is used.
-    #[serde(rename = "@variable")]
+    #[serde(rename = "@variable", default)]
     pub variable: Vec<NameVariable>,
     /// Child elements.
     #[serde(rename = "$value", default)]
@@ -2158,7 +2158,11 @@ impl Names {
         let options = self.options().apply(&child.options());
 
         Names {
-            variable: child.variable.clone(),
+            variable: if child.variable.is_empty() {
+                self.variable.clone()
+            } else {
+                child.variable.clone()
+            },
             children: self
                 .children
                 .iter()
@@ -2767,8 +2771,8 @@ pub struct ChooseBranch {
     #[serde(rename = "@type")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub type_: Option<Vec<Kind>>,
-    #[serde(rename = "@variable")]
     /// Tests whether the default form of this variable is non-empty.
+    #[serde(rename = "@variable")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variable: Option<Vec<Variable>>,
     /// How to handle the set of tests.
