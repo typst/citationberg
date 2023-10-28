@@ -812,7 +812,7 @@ impl FromStr for Kind {
 }
 
 /// A locator.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Serialize)]
 #[serde(rename_all = "kebab-case")]
 #[allow(missing_docs)]
 pub enum Locator {
@@ -851,6 +851,53 @@ pub enum Locator {
 impl From<Locator> for Term {
     fn from(value: Locator) -> Self {
         Self::Locator(value)
+    }
+}
+
+impl FromStr for Locator {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "act" => Ok(Self::Act),
+            "appendix" => Ok(Self::Appendix),
+            "article-locator" => Ok(Self::ArticleLocator),
+            "book" => Ok(Self::Book),
+            "canon" => Ok(Self::Canon),
+            "chapter" => Ok(Self::Chapter),
+            "column" => Ok(Self::Column),
+            "elocation" => Ok(Self::Elocation),
+            "equation" => Ok(Self::Equation),
+            "figure" => Ok(Self::Figure),
+            "folio" => Ok(Self::Folio),
+            "issue" => Ok(Self::Issue),
+            "line" => Ok(Self::Line),
+            "note" => Ok(Self::Note),
+            "opus" => Ok(Self::Opus),
+            "page" => Ok(Self::Page),
+            "paragraph" => Ok(Self::Paragraph),
+            "part" => Ok(Self::Part),
+            "rule" => Ok(Self::Rule),
+            "scene" => Ok(Self::Scene),
+            "section" => Ok(Self::Section),
+            "sub verbo" | "sub-verbo" => Ok(Self::SubVerbo),
+            "supplement" => Ok(Self::Supplement),
+            "table" => Ok(Self::Table),
+            "timestamp" => Ok(Self::Timestamp),
+            "title" => Ok(Self::Title),
+            "title-locator" => Ok(Self::TitleLocator),
+            "verse" => Ok(Self::Verse),
+            "volume" => Ok(Self::Volume),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Locator {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+
+        Self::from_str(&s).map_err(|_| de::Error::custom("invalid locator"))
     }
 }
 
