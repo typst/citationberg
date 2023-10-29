@@ -2480,7 +2480,7 @@ impl NameOptions<'_> {
         let et_al_min = self.et_al_min.map_or(usize::MAX, |u| u as usize);
         let et_al_use_first = self.et_al_use_first.map_or(usize::MAX, |u| u as usize);
 
-        length > et_al_min && idx + 1 > et_al_use_first
+        length >= et_al_min && idx + 1 > et_al_use_first
     }
 }
 
