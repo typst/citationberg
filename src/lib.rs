@@ -2982,7 +2982,10 @@ impl Locale {
         self.terms
             .as_ref()
             .and_then(|terms| {
-                terms.terms.iter().find(|t| t.name == term && t.form == form)
+                terms
+                    .terms
+                    .iter()
+                    .find(|t| t.name.is_lexically_same(term) && t.form == form)
             })
             .filter(|t| {
                 t.localization.is_some() || t.single.is_some() || t.multiple.is_some()
