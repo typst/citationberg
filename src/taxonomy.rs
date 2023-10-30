@@ -877,6 +877,10 @@ pub enum Locator {
     TitleLocator,
     Verse,
     Volume,
+    /// The custom type is a `citationberg` addition. It will render nothing in
+    /// the locator's `cs:label` element.
+    #[serde(skip)]
+    Custom,
 }
 
 impl From<Locator> for Term {
