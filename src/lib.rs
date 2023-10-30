@@ -52,8 +52,11 @@ use taxonomy::{
 
 use self::util::*;
 
+/// Result type for functions that serialize and deserialize XML.
+pub type XmlResult<T> = Result<T, XmlError>;
+
 /// Error type for functions that serialize and deserialize XML.
-pub type XmlResult<T> = Result<T, quick_xml::de::DeError>;
+pub type XmlError = quick_xml::de::DeError;
 
 const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(4096);
 
