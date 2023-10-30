@@ -1,129 +1,61 @@
-//! A library for parsing CSL styles.
-//!
-//! Citationberg deserializes CSL styles from XML into Rust structs. It supports
-//! [CSL 1.0.2](https://docs.citationstyles.org/en/stable/specification.html).
-//!
-//! This crate is not a CSL processor, so you are free to choose whatever data
-//! model and data types you need for your bibliographic needs. If you need to
-//! render citations, you can use
-//! [Hayagriva](https://github.com/typst/hayagriva) which uses this crate under
-//! the hood.
-//!
-//! Parse your style like this:
-//!
-//! ```rust
-//! use citationberg::Style;
-//! use std::fs;
-//!
-//! let style =
-//!     citationberg::Style::from_xml(&fs::read_to_string("tests/independent/ieee.csl").unwrap())
-//!         .unwrap();
-//!     
-//! if let Style::Independent(independent) = style {
-//!     assert_eq!(independent.info.title.value, "IEEE");
-//!     // Get started processing your style!
-//! } else {
-//!     panic!("IEEE is an independent style");
-//! }
-//! ```
-//!
-//! You can also parse a [`DependentStyle`] or a [`IndependentStyle`] directly.
+/*!
+A library for parsing CSL styles.
+
+Citationberg deserializes CSL styles from XML into Rust structs. It supports
+[CSL 1.0.2](https://docs.citationstyles.org/en/stable/specification.html).
+
+This crate is not a CSL processor, so you are free to choose whatever data
+model and data types you need for your bibliographic needs. If you need to
+render citations, you can use
+[Hayagriva](https://github.com/typst/hayagriva) which uses this crate under
+the hood.
+
+Parse your style like this:
+
+```rust
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+use std::fs;
+use citationberg::Style;
+
+let string = fs::read_to_string("tests/independent/ieee.csl")?;
+let style = citationberg::Style::from_xml(&string)?;
+
+let Style::Independent(independent) = style else {
+    panic!("IEEE is an independent style");
+};
+
+assert_eq!(independent.info.title.value, "IEEE");
+# Ok(())
+# }
+```
+
+You can also parse a [`DependentStyle`] or a [`IndependentStyle`] directly.
+*/
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+#[cfg(feature = "json")]
+pub mod json;
+pub mod taxonomy;
+
+mod util;
+
 use std::fmt::{self, Debug};
 use std::num::{NonZeroI16, NonZeroUsize};
 
-use serde::{Deserialize, Serialize};
-
 use quick_xml::de::{Deserializer, SliceReader};
+use serde::{Deserialize, Serialize};
 use taxonomy::{
     DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm, Term, Variable,
 };
 
-pub mod taxonomy;
+use self::util::*;
 
 /// Error type for functions that serialize and deserialize XML.
-pub type XmlSerdeError = quick_xml::de::DeError;
-/// Error type for functions that deserialise CBOR.
-#[cfg(feature = "ciborium")]
-pub type CborDeserializeError = ciborium::de::Error<std::io::Error>;
-/// Error type for functions that serialise CBOR.
-#[cfg(feature = "ciborium")]
-pub type CborSerializeError = ciborium::ser::Error<std::io::Error>;
+pub type XmlResult<T> = Result<T, quick_xml::de::DeError>;
+
 const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(4096);
-
-fn deserialize_bool<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<bool, D::Error> {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrBool {
-        Bool(bool),
-        String(String),
-    }
-
-    let deser = StringOrBool::deserialize(deserializer)?;
-    Ok(match deser {
-        StringOrBool::Bool(b) => b,
-        StringOrBool::String(s) => s.to_ascii_lowercase() == "true",
-    })
-}
-
-fn deserialize_bool_option<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<bool>, D::Error> {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrBool {
-        Bool(bool),
-        String(String),
-    }
-
-    let res = Option::<StringOrBool>::deserialize(deserializer)?;
-    Ok(res.map(|s| match s {
-        StringOrBool::Bool(b) => b,
-        StringOrBool::String(s) => s.to_ascii_lowercase() == "true",
-    }))
-}
-
-fn deserialize_u32<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<u32, D::Error> {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrUnsigned {
-        Unsigned(u32),
-        String(String),
-    }
-
-    let res = StringOrUnsigned::deserialize(deserializer)?;
-    Ok(match res {
-        StringOrUnsigned::Unsigned(u) => u,
-        StringOrUnsigned::String(s) => {
-            s.trim().parse().map_err(serde::de::Error::custom)?
-        }
-    })
-}
-
-fn deserialize_u32_option<'de, D: serde::Deserializer<'de>>(
-    deserializer: D,
-) -> Result<Option<u32>, D::Error> {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum StringOrUnsigned {
-        Unsigned(u32),
-        String(String),
-    }
-
-    let res = Option::<StringOrUnsigned>::deserialize(deserializer)?;
-    res.map(|s| match s {
-        StringOrUnsigned::Unsigned(u) => Ok(u),
-        StringOrUnsigned::String(s) => s.trim().parse().map_err(serde::de::Error::custom),
-    })
-    .transpose()
-}
 
 /// Allow every struct with formatting properties to convert to a `Formatting`.
 pub trait ToFormatting {
@@ -283,8 +215,8 @@ pub struct IndependentStyle {
 }
 
 impl IndependentStyle {
-    /// Create a style from an XML file.
-    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
+    /// Create a style from an XML string.
+    pub fn from_xml(xml: &str) -> XmlResult<Self> {
         let de = &mut deserializer(xml);
         IndependentStyle::deserialize(de)
     }
@@ -336,8 +268,8 @@ pub struct DependentStyle {
 }
 
 impl DependentStyle {
-    /// Create a style from an XML file.
-    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
+    /// Create a style from an XML string.
+    pub fn from_xml(xml: &str) -> XmlResult<Self> {
         let de = &mut deserializer(xml);
         DependentStyle::deserialize(de)
     }
@@ -376,31 +308,17 @@ pub enum Style {
 }
 
 impl Style {
-    /// Create a style from an XML file.
-    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
+    /// Create a style from an XML string.
+    pub fn from_xml(xml: &str) -> XmlResult<Self> {
         let de = &mut deserializer(xml);
         Style::deserialize(de)
     }
 
-    /// Write the style to an XML file.
-    pub fn to_xml(&self) -> Result<String, XmlSerdeError> {
+    /// Write the style to an XML string.
+    pub fn to_xml(&self) -> XmlResult<String> {
         let mut buf = String::new();
         let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
         self.serialize(ser)?;
-        Ok(buf)
-    }
-
-    /// Create a style from a CBOR file.
-    #[cfg(feature = "ciborium")]
-    pub fn from_cbor(reader: &[u8]) -> Result<Self, CborDeserializeError> {
-        ciborium::de::from_reader(reader)
-    }
-
-    /// Write the style to a CBOR file.
-    #[cfg(feature = "ciborium")]
-    pub fn to_cbor(&self) -> Result<Vec<u8>, CborSerializeError> {
-        let mut buf = Vec::new();
-        ciborium::ser::into_writer(self, &mut buf)?;
         Ok(buf)
     }
 
@@ -2961,31 +2879,17 @@ pub struct LocaleFile {
 }
 
 impl LocaleFile {
-    /// Create a locale from a XML string.
-    pub fn from_xml(xml: &str) -> Result<Self, XmlSerdeError> {
+    /// Create a locale from an XML string.
+    pub fn from_xml(xml: &str) -> XmlResult<Self> {
         let locale: Self = quick_xml::de::from_str(xml)?;
         Ok(locale)
     }
 
-    /// Write the locale to an XML file.
-    pub fn to_xml(&self) -> Result<String, XmlSerdeError> {
+    /// Write the locale to an XML string.
+    pub fn to_xml(&self) -> XmlResult<String> {
         let mut buf = String::new();
         let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
         self.serialize(ser)?;
-        Ok(buf)
-    }
-
-    /// Create a locale from a CBOR file.
-    #[cfg(feature = "ciborium")]
-    pub fn from_cbor(reader: &[u8]) -> Result<Self, CborDeserializeError> {
-        ciborium::de::from_reader(reader)
-    }
-
-    /// Write the locale to a CBOR file.
-    #[cfg(feature = "ciborium")]
-    pub fn to_cbor(&self) -> Result<Vec<u8>, CborSerializeError> {
-        let mut buf = Vec::new();
-        ciborium::ser::into_writer(self, &mut buf)?;
         Ok(buf)
     }
 }
@@ -3535,6 +3439,7 @@ impl TextCase {
 #[cfg(test)]
 mod test {
     use super::*;
+    use serde::de::DeserializeOwned;
     use std::{error::Error, fs};
 
     fn folder<F>(
@@ -3608,6 +3513,18 @@ mod test {
         })
     }
 
+    #[track_caller]
+    fn to_cbor<T: Serialize>(style: &T) -> Vec<u8> {
+        let mut buf = Vec::new();
+        ciborium::ser::into_writer(style, &mut buf).unwrap();
+        buf
+    }
+
+    #[track_caller]
+    fn from_cbor<T: DeserializeOwned>(reader: &[u8]) -> T {
+        ciborium::de::from_reader(reader).unwrap()
+    }
+
     #[test]
     fn test_independent() {
         check_style("tests/independent", "independent CSL style");
@@ -3627,7 +3544,6 @@ mod test {
     /// [styles](https://github.com/citation-style-language/locales) repository
     /// into a sibling folder to run this test.
     #[test]
-    #[cfg(feature = "ciborium")]
     fn roundtrip_cbor_all() {
         fs::create_dir_all("tests/artifacts/styles").unwrap();
         for style_thing in
@@ -3651,7 +3567,7 @@ mod test {
             eprintln!("Testing {}", path.display());
             let source = fs::read_to_string(&path).unwrap();
             let style = Style::from_xml(&source).unwrap();
-            let cbor = style.to_cbor().unwrap();
+            let cbor = to_cbor(&style);
             fs::write(
                 format!(
                     "tests/artifacts/styles/{}.cbor",
@@ -3660,7 +3576,7 @@ mod test {
                 &cbor,
             )
             .unwrap();
-            let style2: Style = Style::from_cbor(&cbor).unwrap();
+            let style2 = from_cbor(&cbor);
             assert_eq!(style, style2);
         }
     }
@@ -3669,7 +3585,6 @@ mod test {
     /// [locales](https://github.com/citation-style-language/locales) repository
     /// into a sibling folder to run this test.
     #[test]
-    #[cfg(feature = "ciborium")]
     fn roundtrip_cbor_all_locales() {
         fs::create_dir_all("tests/artifacts/locales").unwrap();
         for style_thing in
@@ -3700,7 +3615,7 @@ mod test {
             eprintln!("Testing {}", path.display());
             let source = fs::read_to_string(&path).unwrap();
             let locale = LocaleFile::from_xml(&source).unwrap();
-            let cbor = locale.to_cbor().unwrap();
+            let cbor = to_cbor(&locale);
             fs::write(
                 format!(
                     "tests/artifacts/locales/{}.cbor",
@@ -3709,7 +3624,7 @@ mod test {
                 &cbor,
             )
             .unwrap();
-            let locale2 = LocaleFile::from_cbor(&cbor).unwrap();
+            let locale2 = from_cbor(&cbor);
             assert_eq!(locale, locale2);
         }
     }

@@ -3,7 +3,7 @@ name = "citationberg"
 version = "0.1.0"
 authors = ["Martin Haug <mhaug@live.de>"]
 license = "MIT OR Apache-2.0"
-description = "Read and process CSL files"
+description = "A parser for CSL files"
 repository = "https://github.com/typst/citationberg"
 readme = "README.md"
 categories = ["parser-implementations", "text-processing"]
@@ -11,12 +11,15 @@ keywords = ["csl", "bibliography", "citation"]
 edition = "2021"
 
 [features]
-default = ["ciborium"]
+default = []
+json = ["unscanny"] # adds support for CSL-json parsing
 
 [dependencies]
+quick-xml = { version = "0.28", features = ["serialize", "overlapped-lists"] }
 serde = { version = "1.0", features = ["derive"] }
-quick-xml = {version="0.28", features = ["serialize", "overlapped-lists"]}
-ciborium = { version = "0.2.1", optional = true }
+unscanny = { version = "0.1.0", optional = true }
 
 [dev-dependencies]
+ciborium = "0.2.1"
+serde_json = "1.0.107"
 serde_path_to_error = "0.1"
