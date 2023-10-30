@@ -39,8 +39,7 @@ use serde::{Deserialize, Serialize};
 
 use quick_xml::de::{Deserializer, SliceReader};
 use taxonomy::{
-    DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm,
-    StandardVariable, Term, Variable,
+    DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm, Term, Variable,
 };
 
 pub mod taxonomy;
@@ -1412,63 +1411,46 @@ to_formatting!(Layout, self);
 to_affixes!(Layout, self);
 
 impl Layout {
-    /// Return a layout with default settings and the given elements.
-    pub fn with_elements(elements: Vec<LayoutRenderingElement>) -> Self {
+    /// Return a layout.
+    pub fn new(
+        elements: Vec<LayoutRenderingElement>,
+        formatting: Formatting,
+        affixes: Option<Affixes>,
+        delimiter: Option<String>,
+    ) -> Self {
+        let (prefix, suffix) = if let Some(affixes) = affixes {
+            (affixes.prefix, affixes.suffix)
+        } else {
+            (None, None)
+        };
+
         Self {
             elements,
-            font_style: None,
-            font_variant: None,
-            font_weight: None,
-            text_decoration: None,
-            vertical_align: None,
-            prefix: None,
-            suffix: None,
-            delimiter: None,
+            font_style: formatting.font_style,
+            font_variant: formatting.font_variant,
+            font_weight: formatting.font_weight,
+            text_decoration: formatting.text_decoration,
+            vertical_align: formatting.vertical_align,
+            prefix,
+            suffix,
+            delimiter,
         }
     }
 
-    /// Check whether this layout explicitly renders the `year-suffix` variable.
-    pub fn renders_year_suffix(&self, macros: &[CslMacro]) -> RendersYearSuffix {
-        self.elements.iter().fold(RendersYearSuffix::No, |verdict, e| {
-            verdict.or_else(|| e.renders_year_suffix(macros))
-        })
-    }
-}
-
-/// Whether a `cs:layout` element will render the `year-suffix` variable.
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
-pub enum RendersYearSuffix {
-    /// The layout will always render the `year-suffix` variable.
-    Yes,
-    /// The layout will never render the `year-suffix` variable.
-    #[default]
-    No,
-    /// The layout will conditionally render the `year-suffix` variable.
-    Maybe,
-}
-
-impl RendersYearSuffix {
-    /// Make the outcome conditional.
-    pub fn maybe(self) -> Self {
-        match self {
-            Self::Yes | Self::Maybe => Self::Maybe,
-            Self::No => Self::No,
-        }
+    /// Return a layout with default settings and the given elements.
+    pub fn with_elements(elements: Vec<LayoutRenderingElement>) -> Self {
+        Self::new(elements, Formatting::default(), None, None)
     }
 
-    /// Make a disjunction between this and another outcome.
-    pub fn or_else<F>(self, f: F) -> Self
-    where
-        F: FnOnce() -> Self,
-    {
-        match self {
-            Self::Yes => Self::Yes,
-            Self::No => f(),
-            Self::Maybe => match f() {
-                Self::Yes => Self::Yes,
-                Self::No | Self::Maybe => Self::Maybe,
-            },
-        }
+    /// Find the child element that will render the given variable.
+    pub fn find_variable_element(
+        &self,
+        variable: Variable,
+        macros: &[CslMacro],
+    ) -> Option<LayoutRenderingElement> {
+        self.elements
+            .iter()
+            .find_map(|e| e.find_variable_element(variable, macros))
     }
 }
 
@@ -1493,52 +1475,41 @@ pub enum LayoutRenderingElement {
 }
 
 impl LayoutRenderingElement {
-    /// Check whether this layout explicitly renders the `year-suffix` variable.
-    fn renders_year_suffix(&self, macros: &[CslMacro]) -> RendersYearSuffix {
+    /// Find the child element that will render the given variable.
+    pub fn find_variable_element(
+        &self,
+        variable: Variable,
+        macros: &[CslMacro],
+    ) -> Option<Self> {
         match self {
-            Self::Text(text) => match &text.target {
-                TextTarget::Variable {
-                    var: Variable::Standard(StandardVariable::YearSuffix),
-                    ..
-                } => RendersYearSuffix::Yes,
-                TextTarget::Macro { name, .. } => {
-                    macros.iter().fold(RendersYearSuffix::No, |verdict, m| {
-                        if &m.name == name {
-                            verdict.or_else(|| m.renders_year_suffix(macros))
-                        } else {
-                            verdict
-                        }
-                    })
-                }
-                _ => RendersYearSuffix::No,
-            },
-            Self::Names(n) => n
-                .substitute()
-                .as_ref()
-                .and_then(|n| {
-                    n.children
-                        .iter()
-                        .any(|r| r.renders_year_suffix(macros) != RendersYearSuffix::No)
-                        .then_some(RendersYearSuffix::Maybe)
-                })
-                .unwrap_or(RendersYearSuffix::No),
-            Self::Group(g) => {
-                g.children.iter().fold(RendersYearSuffix::No, |verdict, c| {
-                    verdict.or_else(|| c.renders_year_suffix(macros))
-                })
-            }
-            Self::Choose(c) => {
-                if c.branches().any(|b| {
-                    b.children
-                        .iter()
-                        .any(|c| c.renders_year_suffix(macros) != RendersYearSuffix::No)
-                }) {
-                    RendersYearSuffix::Maybe
+            Self::Text(t) => t.find_variable_element(variable, macros),
+            Self::Choose(c) => c.find_variable_element(variable, macros),
+            Self::Date(d) => {
+                if d.variable.map(Variable::Date) == Some(variable) {
+                    Some(self.clone())
                 } else {
-                    RendersYearSuffix::No
+                    None
                 }
             }
-            _ => RendersYearSuffix::No,
+            Self::Number(n) => {
+                if Variable::Number(n.variable) == variable {
+                    Some(self.clone())
+                } else {
+                    None
+                }
+            }
+            Self::Names(n) => {
+                if n.variable.iter().any(|v| Variable::Name(*v) == variable) {
+                    Some(self.clone())
+                } else {
+                    None
+                }
+            }
+            Self::Group(g) => g
+                .children
+                .iter()
+                .find_map(|e| e.find_variable_element(variable, macros)),
+            Self::Label(_) => None,
         }
     }
 }
@@ -1596,6 +1567,34 @@ impl Text {
             quotes: false,
             strip_periods: false,
             text_case: None,
+        }
+    }
+
+    /// Find the child element that will render the given variable.
+    pub fn find_variable_element(
+        &self,
+        variable: Variable,
+        macros: &[CslMacro],
+    ) -> Option<LayoutRenderingElement> {
+        match &self.target {
+            TextTarget::Variable { var, .. } => {
+                if *var == variable {
+                    Some(LayoutRenderingElement::Text(self.clone()))
+                } else {
+                    None
+                }
+            }
+            TextTarget::Macro { name } => {
+                if let Some(m) = macros.iter().find(|m| m.name == *name) {
+                    m.children
+                        .iter()
+                        .find_map(|e| e.find_variable_element(variable, macros))
+                } else {
+                    None
+                }
+            }
+            TextTarget::Term { .. } => None,
+            TextTarget::Value { .. } => None,
         }
     }
 }
@@ -1825,18 +1824,15 @@ impl DateStrongAnyForm {
     /// CSL files.
     pub fn for_name(name: DatePartName, form: Option<DateAnyForm>) -> Self {
         match name {
-            DatePartName::Day => Self::Day(
-                form.map(DateAnyForm::form_for_day)
-                    .unwrap_or_else(DateDayForm::default),
-            ),
-            DatePartName::Month => Self::Month(
-                form.map(DateAnyForm::form_for_month)
-                    .unwrap_or_else(DateMonthForm::default),
-            ),
-            DatePartName::Year => Self::Year(
-                form.map(DateAnyForm::form_for_year)
-                    .unwrap_or_else(LongShortForm::default),
-            ),
+            DatePartName::Day => {
+                Self::Day(form.map(DateAnyForm::form_for_day).unwrap_or_default())
+            }
+            DatePartName::Month => {
+                Self::Month(form.map(DateAnyForm::form_for_month).unwrap_or_default())
+            }
+            DatePartName::Year => {
+                Self::Year(form.map(DateAnyForm::form_for_year).unwrap_or_default())
+            }
         }
     }
 }
@@ -2079,6 +2075,40 @@ pub struct Names {
 }
 
 impl Names {
+    /// Return names with default settings and the given variables.
+    pub fn with_variables(variables: Vec<NameVariable>) -> Self {
+        Self {
+            variable: variables,
+            children: Vec::default(),
+            delimiter: None,
+
+            and: None,
+            delimiter_precedes_et_al: None,
+            delimiter_precedes_last: None,
+            et_al_min: None,
+            et_al_use_first: None,
+            et_al_subsequent_min: None,
+            et_al_subsequent_use_first: None,
+            et_al_use_last: None,
+            name_form: None,
+            initialize: None,
+            initialize_with: None,
+            name_as_sort_order: None,
+            sort_separator: None,
+
+            font_style: None,
+            font_variant: None,
+            font_weight: None,
+            text_decoration: None,
+            vertical_align: None,
+
+            prefix: None,
+            suffix: None,
+
+            display: None,
+        }
+    }
+
     /// Return the delimiter given some name options.
     pub fn delimiter<'a>(&'a self, name_options: &'a InheritableNameOptions) -> &'a str {
         self.delimiter
@@ -2735,6 +2765,21 @@ impl Choose {
     pub fn branches(&self) -> impl Iterator<Item = &ChooseBranch> {
         std::iter::once(&self.if_).chain(self.else_if.iter())
     }
+
+    /// Find the child element that renders the given variable.
+    pub fn find_variable_element(
+        &self,
+        variable: Variable,
+        macros: &[CslMacro],
+    ) -> Option<LayoutRenderingElement> {
+        self.branches()
+            .find_map(|b| {
+                b.children
+                    .iter()
+                    .find_map(|c| c.find_variable_element(variable, macros))
+            })
+            .clone()
+    }
 }
 
 /// A single branch of a conditional group.
@@ -2889,14 +2934,6 @@ pub struct CslMacro {
     #[serde(rename = "$value")]
     #[serde(default)]
     pub children: Vec<LayoutRenderingElement>,
-}
-
-impl CslMacro {
-    fn renders_year_suffix(&self, macros: &[CslMacro]) -> RendersYearSuffix {
-        self.children.iter().fold(RendersYearSuffix::No, |acc, child| {
-            acc.or_else(|| child.renders_year_suffix(macros))
-        })
-    }
 }
 
 /// Root element of a locale file.
