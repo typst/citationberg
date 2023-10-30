@@ -1079,9 +1079,8 @@ impl DisambiguationRule {
     /// Whether this rule allows full first names or only initials.
     pub fn allows_full_first_names(self) -> bool {
         match self {
-            Self::AllNames | Self::PrimaryName => true,
+            Self::AllNames | Self::PrimaryName | Self::ByCite => true,
             Self::AllNamesWithInitials | Self::PrimaryNameWithInitials => false,
-            Self::ByCite => false,
         }
     }
 
