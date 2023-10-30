@@ -2228,7 +2228,7 @@ impl Name {
             delimiter_precedes_et_al: applied
                 .delimiter_precedes_et_al
                 .unwrap_or_default(),
-            delimiter_precedes_last: applied.delimiter_precedes_et_al.unwrap_or_default(),
+            delimiter_precedes_last: applied.delimiter_precedes_last.unwrap_or_default(),
             et_al_min: applied.et_al_min,
             et_al_use_first: applied.et_al_use_first,
             et_al_subsequent_min: applied.et_al_subsequent_min,
