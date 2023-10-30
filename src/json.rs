@@ -483,14 +483,4 @@ mod tests {
         let item = Item(map);
         println!("{}", serde_json::to_string_pretty(&item).unwrap());
     }
-
-    #[test]
-    fn test_deserialize() {
-        let string = include_str!("../tests/entry.json");
-        let item: Vec<Item> = serde_json::from_str(string).unwrap();
-        println!("{:#?}", &item);
-        for i in &item {
-            println!("{:#?}", i.id());
-        }
-    }
 }

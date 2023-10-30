@@ -1,0 +1,9 @@
+Licenses for third party components used by this project can be found below.
+
+================================================================================
+The Creative Commons BY-SA 3.0 DEED License applies to:
+* The CSL styles found in `tests/dependent/*`
+* The CSL styles found in `tests/independent/*`
+* The CSL locales found in `tests/locales/*`
+
+https://creativecommons.org/licenses/by-sa/3.0/
