@@ -2421,14 +2421,21 @@ impl InheritableNameOptions {
 impl NameOptions<'_> {
     /// Whether the nth name is suppressed given the number of names and this
     /// configuration.
-    pub fn is_suppressed(&self, idx: usize, length: usize) -> bool {
+    pub fn is_suppressed(&self, idx: usize, length: usize, is_subsequent: bool) -> bool {
         // This is not suppressed if we print the last element and this is it.
         if self.et_al_use_last && idx + 1 >= length {
             return false;
         }
 
-        let et_al_min = self.et_al_min.map_or(usize::MAX, |u| u as usize);
-        let et_al_use_first = self.et_al_use_first.map_or(usize::MAX, |u| u as usize);
+        // If this is a subsequnt citation of the same item, use other CSL options
+        let (et_al_min, et_al_use_first) = if is_subsequent {
+            (self.et_al_subsequent_min, self.et_al_subsequent_use_first)
+        } else {
+            (self.et_al_min, self.et_al_use_first)
+        };
+
+        let et_al_min = et_al_min.map_or(usize::MAX, |u| u as usize);
+        let et_al_use_first = et_al_use_first.map_or(usize::MAX, |u| u as usize);
 
         length >= et_al_min && idx + 1 > et_al_use_first
     }
