@@ -649,7 +649,11 @@ impl PageRangeFormat {
         let separator = separator.unwrap_or("–");
 
         write!(buf, "{}{}", range.start, separator)?;
-        let end = range.end;
+        let end = if range.end >= range.start {
+            range.end
+        } else {
+            expand(range.start, range.end)
+        };
 
         match self {
             _ if range.start < 0 || range.end < 0 => write!(buf, "{}", end),
@@ -661,38 +665,60 @@ impl PageRangeFormat {
                 write!(buf, "{}", end)
             }
             PageRangeFormat::Minimal => {
-                write!(buf, "{}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 0))
             }
             PageRangeFormat::MinimalTwo if end < 10 => {
-                write!(buf, "{}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 1))
             }
             PageRangeFormat::Chicago15
                 if range.start > 100 && (1..10).contains(&(range.start % 100)) =>
             {
-                write!(buf, "{}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 0))
             }
             PageRangeFormat::Chicago15
-                if range.start > 1000 && end - range.start >= 100 =>
+                if closest_smaller_power_of_10(range.start) == 1000 =>
             {
-                write!(buf, "{}", end)
+                let changed = changed_part(range.start, end, 1);
+                if closest_smaller_power_of_10(changed) == 100 {
+                    write!(buf, "{end}")
+                } else {
+                    write!(buf, "{changed}")
+                }
             }
             PageRangeFormat::Chicago15
             | PageRangeFormat::Chicago16
             | PageRangeFormat::MinimalTwo => {
-                write!(buf, "{:02}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 1))
             }
         }
     }
 }
 
-fn changed_part(a: i32, b: i32) -> i32 {
-    let mut base = (a.max(b) as f32).log10().floor() as u32 - 1;
+// Taken from https://github.com/citation-style-language/citeproc-rs/blob/master/crates/proc/src/page_range.rs
+fn closest_smaller_power_of_10(num: i32) -> i32 {
+    let answer = 10_f64.powf((num as f64).log10().floor()) as i32;
+
+    // these properties need to hold. I think they do, but the float conversions
+    // might mess things up...
+    debug_assert!(answer <= num);
+    debug_assert!(answer > num / 10);
+    answer
+}
+
+// Taken from https://github.com/citation-style-language/citeproc-rs/blob/master/crates/proc/src/page_range.rs
+fn expand(a: i32, b: i32) -> i32 {
+    let mask = closest_smaller_power_of_10(b) * 10;
+    (a - (a % mask)) + (b % mask)
+}
+
+fn changed_part(a: i32, b: i32, min: u32) -> i32 {
+    let mut base = (a.max(b) as f32).log10().floor() as u32;
 
     // Check whether the digit at the given base is the same
     while {
         let a_digit = a / 10_i32.pow(base);
         let b_digit = b / 10_i32.pow(base);
-        a_digit == b_digit && base != 0
+        a_digit == b_digit && base > min
     } {
         base -= 1;
     }
@@ -3624,5 +3650,20 @@ mod test {
             let locale2 = from_cbor(&cbor);
             assert_eq!(locale, locale2);
         }
+    }
+
+    #[test]
+    fn test_expand() {
+        assert_eq!(expand(103, 4), 104);
+        assert_eq!(expand(133, 4), 134);
+        assert_eq!(expand(133, 54), 154);
+        assert_eq!(expand(100, 4), 104);
+    }
+
+    #[test]
+    fn page_range() {
+        let mut buf = String::new();
+        PageRangeFormat::Chicago15.format(100..4, &mut buf, None).unwrap();
+        assert_eq!("100–104", buf);
     }
 }
