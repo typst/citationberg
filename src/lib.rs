@@ -1045,7 +1045,7 @@ pub struct Citation {
 impl Citation {
     /// Return the default value for `cite_group_delimiter` if implicitly needed
     /// due to presence of a `collapse` attribute.
-    pub const DEFAULT_CITE_GROUP_DELIMITER: &str = ", ";
+    pub const DEFAULT_CITE_GROUP_DELIMITER: &'static str = ", ";
 
     /// Return a citation with default settings and the given layout.
     pub fn with_layout(layout: Layout) -> Self {
@@ -1722,7 +1722,7 @@ to_affixes!(DatePart);
 
 impl DatePart {
     /// Retrieve the default delimiter for the date part.
-    pub const DEFAULT_DELIMITER: &str = "–";
+    pub const DEFAULT_DELIMITER: &'static str = "–";
 
     /// Retrieve the form.
     pub fn form(&self) -> DateStrongAnyForm {
@@ -3661,6 +3661,7 @@ mod test {
     }
 
     #[test]
+    #[allow(clippy::reversed_empty_ranges)]
     fn page_range() {
         let mut buf = String::new();
         PageRangeFormat::Chicago15.format(100..4, &mut buf, None).unwrap();
