@@ -649,7 +649,11 @@ impl PageRangeFormat {
         let separator = separator.unwrap_or("–");
 
         write!(buf, "{}{}", range.start, separator)?;
-        let end = range.end;
+        let end = if range.end >= range.start {
+            range.end
+        } else {
+            expand(range.start, range.end)
+        };
 
         match self {
             _ if range.start < 0 || range.end < 0 => write!(buf, "{}", end),
@@ -661,38 +665,60 @@ impl PageRangeFormat {
                 write!(buf, "{}", end)
             }
             PageRangeFormat::Minimal => {
-                write!(buf, "{}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 0))
             }
             PageRangeFormat::MinimalTwo if end < 10 => {
-                write!(buf, "{}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 1))
             }
             PageRangeFormat::Chicago15
                 if range.start > 100 && (1..10).contains(&(range.start % 100)) =>
             {
-                write!(buf, "{}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 0))
             }
             PageRangeFormat::Chicago15
-                if range.start > 1000 && end - range.start >= 100 =>
+                if closest_smaller_power_of_10(range.start) == 1000 =>
             {
-                write!(buf, "{}", end)
+                let changed = changed_part(range.start, end, 1);
+                if closest_smaller_power_of_10(changed) == 100 {
+                    write!(buf, "{end}")
+                } else {
+                    write!(buf, "{changed}")
+                }
             }
             PageRangeFormat::Chicago15
             | PageRangeFormat::Chicago16
             | PageRangeFormat::MinimalTwo => {
-                write!(buf, "{:02}", changed_part(range.start, end))
+                write!(buf, "{}", changed_part(range.start, end, 1))
             }
         }
     }
 }
 
-fn changed_part(a: i32, b: i32) -> i32 {
-    let mut base = (a.max(b) as f32).log10().floor() as u32 - 1;
+// Taken from https://github.com/citation-style-language/citeproc-rs/blob/master/crates/proc/src/page_range.rs
+fn closest_smaller_power_of_10(num: i32) -> i32 {
+    let answer = 10_f64.powf((num as f64).log10().floor()) as i32;
+
+    // these properties need to hold. I think they do, but the float conversions
+    // might mess things up...
+    debug_assert!(answer <= num);
+    debug_assert!(answer > num / 10);
+    answer
+}
+
+// Taken from https://github.com/citation-style-language/citeproc-rs/blob/master/crates/proc/src/page_range.rs
+fn expand(a: i32, b: i32) -> i32 {
+    let mask = closest_smaller_power_of_10(b) * 10;
+    (a - (a % mask)) + (b % mask)
+}
+
+fn changed_part(a: i32, b: i32, min: u32) -> i32 {
+    let mut base = (a.max(b) as f32).log10().floor() as u32;
 
     // Check whether the digit at the given base is the same
     while {
         let a_digit = a / 10_i32.pow(base);
         let b_digit = b / 10_i32.pow(base);
-        a_digit == b_digit && base != 0
+        a_digit == b_digit && base > min
     } {
         base -= 1;
     }
@@ -1019,7 +1045,7 @@ pub struct Citation {
 impl Citation {
     /// Return the default value for `cite_group_delimiter` if implicitly needed
     /// due to presence of a `collapse` attribute.
-    pub const DEFAULT_CITE_GROUP_DELIMITER: &str = ", ";
+    pub const DEFAULT_CITE_GROUP_DELIMITER: &'static str = ", ";
 
     /// Return a citation with default settings and the given layout.
     pub fn with_layout(layout: Layout) -> Self {
@@ -1696,7 +1722,7 @@ to_affixes!(DatePart);
 
 impl DatePart {
     /// Retrieve the default delimiter for the date part.
-    pub const DEFAULT_DELIMITER: &str = "–";
+    pub const DEFAULT_DELIMITER: &'static str = "–";
 
     /// Retrieve the form.
     pub fn form(&self) -> DateStrongAnyForm {
@@ -3631,5 +3657,75 @@ mod test {
             let locale2 = from_cbor(&cbor);
             assert_eq!(locale, locale2);
         }
+    }
+
+    #[test]
+    fn test_expand() {
+        assert_eq!(expand(103, 4), 104);
+        assert_eq!(expand(133, 4), 134);
+        assert_eq!(expand(133, 54), 154);
+        assert_eq!(expand(100, 4), 104);
+    }
+
+    #[test]
+    fn page_range() {
+        fn run(format: PageRangeFormat, start: i32, end: i32) -> String {
+            let mut buf = String::new();
+            format.format(start..end, &mut buf, None).unwrap();
+            buf
+        }
+
+        let c15 = PageRangeFormat::Chicago15;
+        let c16 = PageRangeFormat::Chicago16;
+        let exp = PageRangeFormat::Expanded;
+        let min = PageRangeFormat::Minimal;
+        let mi2 = PageRangeFormat::MinimalTwo;
+
+        // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
+
+        assert_eq!("3–10", run(c15, 3, 10));
+        assert_eq!("71–72", run(c15, 71, 72));
+        assert_eq!("100–104", run(c15, 100, 4));
+        assert_eq!("600–613", run(c15, 600, 613));
+        assert_eq!("1100–1123", run(c15, 1100, 1123));
+        assert_eq!("107–8", run(c15, 107, 108));
+        assert_eq!("505–17", run(c15, 505, 517));
+        assert_eq!("1002–6", run(c15, 1002, 1006));
+        assert_eq!("321–25", run(c15, 321, 325));
+        assert_eq!("415–532", run(c15, 415, 532));
+        assert_eq!("11564–68", run(c15, 11564, 11568));
+        assert_eq!("13792–803", run(c15, 13792, 13803));
+        assert_eq!("1496–1504", run(c15, 1496, 1504));
+        assert_eq!("2787–2816", run(c15, 2787, 2816));
+
+        assert_eq!("3–10", run(c16, 3, 10));
+        assert_eq!("71–72", run(c16, 71, 72));
+        assert_eq!("92–113", run(c16, 92, 113));
+        assert_eq!("100–104", run(c16, 100, 4));
+        assert_eq!("600–613", run(c16, 600, 613));
+        assert_eq!("1100–1123", run(c16, 1100, 1123));
+        assert_eq!("107–8", run(c16, 107, 108));
+        assert_eq!("505–17", run(c16, 505, 517));
+        assert_eq!("1002–6", run(c16, 1002, 1006));
+        assert_eq!("321–25", run(c16, 321, 325));
+        assert_eq!("415–532", run(c16, 415, 532));
+        assert_eq!("1087–89", run(c16, 1087, 1089));
+        assert_eq!("1496–500", run(c16, 1496, 1500));
+        assert_eq!("11564–68", run(c16, 11564, 11568));
+        assert_eq!("13792–803", run(c16, 13792, 13803));
+        assert_eq!("12991–3001", run(c16, 12991, 13001));
+
+        assert_eq!("42–45", run(exp, 42, 45));
+        assert_eq!("321–328", run(exp, 321, 328));
+        assert_eq!("2787–2816", run(exp, 2787, 2816));
+
+        assert_eq!("42–5", run(min, 42, 45));
+        assert_eq!("321–8", run(min, 321, 328));
+        assert_eq!("2787–816", run(min, 2787, 2816));
+
+        assert_eq!("7–8", run(mi2, 7, 8));
+        assert_eq!("42–45", run(mi2, 42, 45));
+        assert_eq!("321–28", run(mi2, 321, 328));
+        assert_eq!("2787–816", run(mi2, 2787, 2816));
     }
 }
