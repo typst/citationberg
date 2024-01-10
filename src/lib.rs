@@ -3663,8 +3663,63 @@ mod test {
     #[test]
     #[allow(clippy::reversed_empty_ranges)]
     fn page_range() {
-        let mut buf = String::new();
-        PageRangeFormat::Chicago15.format(100..4, &mut buf, None).unwrap();
-        assert_eq!("100–104", buf);
+        fn run(format: PageRangeFormat, start: i32, end: i32) -> String {
+            let mut buf = String::new();
+            format.format(start..end, &mut buf, None).unwrap();
+            buf
+        }
+
+        let c15 = PageRangeFormat::Chicago15;
+        let c16 = PageRangeFormat::Chicago16;
+        let exp = PageRangeFormat::Expanded;
+        let min = PageRangeFormat::Minimal;
+        let mi2 = PageRangeFormat::MinimalTwo;
+
+        // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
+
+        assert_eq!("3–10", run(c15, 3, 10));
+        assert_eq!("71–72", run(c15, 71, 72));
+        assert_eq!("100–104", run(c15, 100, 4));
+        assert_eq!("600–613", run(c15, 600, 613));
+        assert_eq!("1100–1123", run(c15, 1100, 1123));
+        assert_eq!("107–8", run(c15, 107, 108));
+        assert_eq!("505–17", run(c15, 505, 517));
+        assert_eq!("1002–6", run(c15, 1002, 1006));
+        assert_eq!("321–25", run(c15, 321, 325));
+        assert_eq!("415–532", run(c15, 415, 532));
+        assert_eq!("11564–68", run(c15, 11564, 11568));
+        assert_eq!("13792–803", run(c15, 13792, 13803));
+        assert_eq!("1496–1504", run(c15, 1496, 1504));
+        assert_eq!("2787–2816", run(c15, 2787, 2816));
+
+        assert_eq!("3–10", run(c16, 3, 10));
+        assert_eq!("71–72", run(c16, 71, 72));
+        assert_eq!("92–113", run(c16, 92, 113));
+        assert_eq!("100–104", run(c16, 100, 4));
+        assert_eq!("600–613", run(c16, 600, 613));
+        assert_eq!("1100–1123", run(c16, 1100, 1123));
+        assert_eq!("107–8", run(c16, 107, 108));
+        assert_eq!("505–17", run(c16, 505, 517));
+        assert_eq!("1002–6", run(c16, 1002, 1006));
+        assert_eq!("321–25", run(c16, 321, 325));
+        assert_eq!("415–532", run(c16, 415, 532));
+        assert_eq!("1087–89", run(c16, 1087, 1089));
+        assert_eq!("1496–500", run(c16, 1496, 1500));
+        assert_eq!("11564–68", run(c16, 11564, 11568));
+        assert_eq!("13792–803", run(c16, 13792, 13803));
+        assert_eq!("12991–3001", run(c16, 12991, 13001));
+
+        assert_eq!("42–45", run(exp, 42, 45));
+        assert_eq!("321–328", run(exp, 321, 328));
+        assert_eq!("2787–2816", run(exp, 2787, 2816));
+
+        assert_eq!("42–5", run(min, 42, 45));
+        assert_eq!("321–8", run(min, 321, 328));
+        assert_eq!("2787–816", run(min, 2787, 2816));
+
+        assert_eq!("7–8", run(mi2, 7, 8));
+        assert_eq!("42–45", run(mi2, 42, 45));
+        assert_eq!("321–28", run(mi2, 321, 328));
+        assert_eq!("2787–816", run(mi2, 2787, 2816));
     }
 }
