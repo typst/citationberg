@@ -3661,7 +3661,6 @@ mod test {
     }
 
     #[test]
-    #[allow(clippy::reversed_empty_ranges)]
     fn page_range() {
         fn run(format: PageRangeFormat, start: i32, end: i32) -> String {
             let mut buf = String::new();
