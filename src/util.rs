@@ -76,7 +76,7 @@ pub fn deserialize_u32_option<'de, D: serde::Deserializer<'de>>(
 /// Split `s` into maximal chunks such that two successive chars satisfy `pred`.
 ///
 /// Returns an iterator over these chunks.
-pub(crate) fn group_by<'a, F>(s: &'a str, pred: F) -> GroupBy<'a, F>
+pub(crate) fn group_by<F>(s: &str, pred: F) -> GroupBy<'_, F>
 where
     F: FnMut(char, char) -> bool,
 {
@@ -109,8 +109,7 @@ where
             None
         } else {
             let mut len = 1;
-            let mut iter = windows(self.string, 2);
-            while let Some(w) = iter.next() {
+            for w in windows(self.string, 2) {
                 let chars: Vec<_> = w.chars().collect();
                 let (c, d) = (chars[0], chars[1]);
                 if (self.predicate)(c, d) {

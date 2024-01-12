@@ -652,94 +652,92 @@ impl PageRangeFormat {
         let separator = separator.unwrap_or("–");
 
         // Split input into different ranges separated by `&` or `,`
-        let ranges =
+        let mut ranges =
             group_by(ranges, |c, d| !(c == ',' || c == '&' || d == ',' || d == '&'))
                 .map(str::trim);
 
         // Write output for each range.
-        ranges
-            .map(|range| {
-                if range == "&" {
-                    write!(buf, " & ")
-                } else if range == "," {
-                    write!(buf, ", ")
+        ranges.try_for_each(|range| {
+            if range == "&" {
+                write!(buf, " & ")
+            } else if range == "," {
+                write!(buf, ", ")
+            } else {
+                // If `-` chars are escaped, write `-`.
+                let mut range_parts = if range.contains("\\-") {
+                    return write!(buf, "{}", range.replace("\\-", "-"));
                 } else {
-                    // If `-` chars are escaped, write `-`.
-                    let mut range_parts = if range.contains("\\-") {
-                        return write!(buf, "{}", range.replace("\\-", "-"));
+                    // Otherwise, split into the two halves of the dash.
+                    range.split(|c| c == '-' || c == '–').map(str::trim)
+                };
+
+                // Get start and end; if less than two elements exist, just output what is there
+                let (start, end) = if let Some(start) = range_parts.next() {
+                    if let Some(end) = range_parts.next() {
+                        (start, end)
                     } else {
-                        // Otherwise, split into the two halves of the dash.
-                        range.split(|c| c == '-' || c == '–').map(str::trim)
-                    };
-
-                    // Get start and end; if less than two elements exist, just output what is there
-                    let (start, end) = if let Some(start) = range_parts.next() {
-                        if let Some(end) = range_parts.next() {
-                            (start, end)
-                        } else {
-                            return write!(buf, "{start}");
-                        }
-                    } else {
-                        return write!(buf, "");
-                    };
-
-                    // Split into the maximal suffix that is all digits (`x`|`y`),
-                    // and the prefix.
-                    let (start_pre, x) = split_max_digit_suffix(start);
-                    let (end_pre, y) = split_max_digit_suffix(end);
-
-                    if start_pre == end_pre {
-                        let pref = start_pre;
-                        let x_len = x.len();
-                        let y_len = y.len();
-                        // If `y` is shorter, it is a shorthand notation, e.g., `101-7`.
-                        let y = if x_len <= y_len {
-                            y.to_string()
-                        } else {
-                            // Expand `y` to include the missing starting digits from `x`.
-                            let mut s = x[..(x_len - y_len)].to_string();
-                            s.push_str(y);
-                            s
-                        };
-
-                        // Write what stays the same early
-                        write!(buf, "{pref}{x}{separator}")?;
-
-                        // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
-                        match self {
-                            PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
-                                if x_len < 3 || x.ends_with("00") =>
-                            {
-                                // For `x` < 100 or multiples of 100, write all digits.
-                                write!(buf, "{y}")
-                            }
-                            PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
-                                if x[x_len - 2..].starts_with("0") =>
-                            {
-                                // For 1 < `x` % 100 < 10, use changed part only.
-                                minimal(buf, 1, x, &y)
-                            }
-                            PageRangeFormat::Chicago15
-                                if x_len == 4 && changed_digits(x, &y) >= 3 =>
-                            {
-                                // If `x` has 4 digits and 3 change, write all digits.
-                                write!(buf, "{y}")
-                            }
-                            PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16 => {
-                                // Otherwise (for Chicago), write at least 2 digits.
-                                minimal(buf, 2, x, &y)
-                            }
-                            PageRangeFormat::Expanded => write!(buf, "{pref}{y}"),
-                            PageRangeFormat::Minimal => minimal(buf, 1, x, &y),
-                            PageRangeFormat::MinimalTwo => minimal(buf, 2, x, &y),
-                        }
-                    } else {
-                        // Prefix is different, write with `-` to follow citeproc test suite.
-                        write!(buf, "{start}-{end}")
+                        return write!(buf, "{start}");
                     }
+                } else {
+                    return write!(buf, "");
+                };
+
+                // Split into the maximal suffix that is all digits (`x`|`y`),
+                // and the prefix.
+                let (start_pre, x) = split_max_digit_suffix(start);
+                let (end_pre, y) = split_max_digit_suffix(end);
+
+                if start_pre == end_pre {
+                    let pref = start_pre;
+                    let x_len = x.len();
+                    let y_len = y.len();
+                    // If `y` is shorter, it is a shorthand notation, e.g., `101-7`.
+                    let y = if x_len <= y_len {
+                        y.to_string()
+                    } else {
+                        // Expand `y` to include the missing starting digits from `x`.
+                        let mut s = x[..(x_len - y_len)].to_string();
+                        s.push_str(y);
+                        s
+                    };
+
+                    // Write what stays the same early
+                    write!(buf, "{pref}{x}{separator}")?;
+
+                    // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
+                    match self {
+                        PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
+                            if x_len < 3 || x.ends_with("00") =>
+                        {
+                            // For `x` < 100 or multiples of 100, write all digits.
+                            write!(buf, "{y}")
+                        }
+                        PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
+                            if x[x_len - 2..].starts_with('0') =>
+                        {
+                            // For 1 < `x` % 100 < 10, use changed part only.
+                            minimal(buf, 1, x, &y)
+                        }
+                        PageRangeFormat::Chicago15
+                            if x_len == 4 && changed_digits(x, &y) >= 3 =>
+                        {
+                            // If `x` has 4 digits and 3 change, write all digits.
+                            write!(buf, "{y}")
+                        }
+                        PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16 => {
+                            // Otherwise (for Chicago), write at least 2 digits.
+                            minimal(buf, 2, x, &y)
+                        }
+                        PageRangeFormat::Expanded => write!(buf, "{pref}{y}"),
+                        PageRangeFormat::Minimal => minimal(buf, 1, x, &y),
+                        PageRangeFormat::MinimalTwo => minimal(buf, 2, x, &y),
+                    }
+                } else {
+                    // Prefix is different, write with `-` to follow citeproc test suite.
+                    write!(buf, "{start}-{end}")
                 }
-            })
-            .collect()
+            }
+        })
     }
 }
 
@@ -790,7 +788,7 @@ fn minimal(
 
 /// Split `s` into the maximal suffix that is only digits and a prefix.
 fn split_max_digit_suffix(s: &str) -> (&str, &str) {
-    let suffix_len = s.chars().rev().take_while(|c| c.is_digit(10)).count();
+    let suffix_len = s.chars().rev().take_while(|c| c.is_ascii_digit()).count();
     let idx = s.len() - suffix_len;
     (&s[..idx], &s[idx..])
 }
