@@ -992,7 +992,7 @@ pub struct Citation {
     )]
     pub disambiguate_add_givenname: bool,
     /// When to expand names that are ambiguous in short form.
-    #[serde(rename = "@disambiguate-add-givenname-rule", default)]
+    #[serde(rename = "@givenname-disambiguation-rule", default)]
     pub givenname_disambiguation_rule: DisambiguationRule,
     /// Disambiguate by adding more names that would otherwise be hidden by et al.
     ///
