@@ -3571,7 +3571,7 @@ mod test {
     }
 
     /// Be sure to check out the CSL
-    /// [styles](https://github.com/citation-style-language/locales) repository
+    /// [styles](https://github.com/citation-style-language/styles) repository
     /// into a sibling folder to run this test.
     #[test]
     fn roundtrip_cbor_all() {

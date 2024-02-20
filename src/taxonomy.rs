@@ -296,6 +296,7 @@ pub enum NumberVariable {
     /// journal article); Use part-title for the title of the part, if any.
     PartNumber,
     /// Printing number of the item or container holding the item.
+    #[serde(alias = "printing")]
     PrintingNumber,
     /// Section of the item or container holding the item (e.g. “§2.0.1” for a
     /// law; “politics” for a newspaper article).
