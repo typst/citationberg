@@ -622,7 +622,7 @@ pub enum StyleClass {
 pub enum PageRangeFormat {
     /// “321–28”
     /// Aliases: `chicago` until CSL 1.1
-    // Rename needed because the number is not used as word boundry by heck.
+    // Rename needed because the number is not used as word boundary by heck.
     #[serde(alias = "chicago")]
     #[serde(rename = "chicago-15")]
     Chicago15,
@@ -1217,7 +1217,7 @@ pub enum SubsequentAuthorSubstituteRule {
     CompleteAll,
     /// When all names match, replace each name.
     CompleteEach,
-    /// Each maching name is replaced.
+    /// Each matching name is replaced.
     PartialEach,
     /// Only the first matching name is replaced.
     PartialFirst,
@@ -2122,7 +2122,7 @@ impl Names {
     }
 
     /// Convert a [`Names`] within a substitute to a name using the parent element.
-    pub fn from_names_substitue(&self, child: &Self) -> Names {
+    pub fn from_names_substitute(&self, child: &Self) -> Names {
         if child.name().is_some()
             || child.et_al().is_some()
             || child.substitute().is_some()
@@ -2453,7 +2453,7 @@ impl NameOptions<'_> {
             return false;
         }
 
-        // If this is a subsequnt citation of the same item, use other CSL options
+        // If this is a subsequent citation of the same item, use other CSL options
         let (et_al_min, et_al_use_first) = if is_subsequent {
             (self.et_al_subsequent_min, self.et_al_subsequent_use_first)
         } else {
@@ -2485,7 +2485,7 @@ pub enum DelimiterBehavior {
     /// (`-precedes-last`) names.
     #[default]
     Contextual,
-    /// Only use if the preceeding name is inverted (per `name-as-sort-order`).
+    /// Only use if the preceding name is inverted (per `name-as-sort-order`).
     AfterInvertedName,
     /// Always use the delimiter for this condition.
     Always,

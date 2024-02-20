@@ -382,7 +382,7 @@ pub struct CitationItem {
     pub locator: Option<String>,
     /// What kind of locator to use (e.g. `"page"`).
     pub label: Option<String>,
-    /// Whether to supress the author for this item.
+    /// Whether to suppress the author for this item.
     #[serde(default)]
     pub suppress_author: bool,
     /// Something to print before this item.
