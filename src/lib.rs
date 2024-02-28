@@ -712,18 +712,18 @@ fn expand(a: i32, b: i32) -> i32 {
 }
 
 fn changed_part(a: i32, b: i32, min: u32) -> i32 {
-    let mut base = (a.max(b) as f32).log10().floor() as u32;
+    let mut base = (a.max(b) as f64).log10().floor() as u32;
 
     // Check whether the digit at the given base is the same
     while {
-        let a_digit = a / 10_i32.pow(base);
-        let b_digit = b / 10_i32.pow(base);
+        let a_digit = a as i64 / 10_i64.saturating_pow(base);
+        let b_digit = b as i64 / 10_i64.saturating_pow(base);
         a_digit == b_digit && base > min
     } {
         base -= 1;
     }
 
-    b % 10_i32.pow(base + 1)
+    (b as i64 % 10_i64.saturating_pow(base + 1)) as i32
 }
 
 /// How to treat the non-dropping name particle when printing names.
@@ -3683,6 +3683,7 @@ mod test {
 
         // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
 
+        assert_eq!("1–8", run(c16, 1, 8));
         assert_eq!("3–10", run(c15, 3, 10));
         assert_eq!("71–72", run(c15, 71, 72));
         assert_eq!("100–104", run(c15, 100, 4));
