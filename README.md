@@ -12,7 +12,7 @@ A library for parsing CSL styles.
 
 ```toml
 [dependencies]
-citationberg = "0.2"
+citationberg = "0.3"
 ```
 
 Citationberg deserializes CSL styles from XML into Rust structs. It supports
