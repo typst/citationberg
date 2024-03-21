@@ -648,6 +648,9 @@ impl PageRangeFormat {
     ) -> Result<(), fmt::Error> {
         let separator = separator.unwrap_or("–");
         let start = *range.start();
+        if start == *range.end() {
+            return write!(buf, "{start}");
+        }
         write!(buf, "{}{}", start, separator)?;
         let end = if *range.end() >= start {
             *range.end()
