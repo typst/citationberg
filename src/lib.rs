@@ -2453,9 +2453,12 @@ impl NameOptions<'_> {
             return false;
         }
 
-        // If this is a subsequent citation of the same item, use other CSL options
+        // If this is a subsequent citation of the same item, use other CSL options, if they exist
         let (et_al_min, et_al_use_first) = if is_subsequent {
-            (self.et_al_subsequent_min, self.et_al_subsequent_use_first)
+            (
+                self.et_al_subsequent_min.or(self.et_al_min),
+                self.et_al_subsequent_use_first.or(self.et_al_use_first),
+            )
         } else {
             (self.et_al_min, self.et_al_use_first)
         };
