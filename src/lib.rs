@@ -642,43 +642,44 @@ impl PageRangeFormat {
     /// Use a page range format to format a range of pages.
     pub fn format(
         self,
-        range: std::ops::Range<i32>,
+        range: std::ops::RangeInclusive<i32>,
         buf: &mut impl fmt::Write,
         separator: Option<&str>,
     ) -> Result<(), fmt::Error> {
         let separator = separator.unwrap_or("–");
-
-        write!(buf, "{}{}", range.start, separator)?;
-        let end = if range.end >= range.start {
-            range.end
+        let start = *range.start();
+        if start == *range.end() {
+            return write!(buf, "{start}");
+        }
+        write!(buf, "{}{}", start, separator)?;
+        let end = if *range.end() >= start {
+            *range.end()
         } else {
-            expand(range.start, range.end)
+            expand(start, *range.end())
         };
 
         match self {
-            _ if range.start < 0 || range.end < 0 => write!(buf, "{}", end),
+            _ if start < 0 || *range.end() < 0 => write!(buf, "{}", end),
             PageRangeFormat::Expanded => write!(buf, "{}", end),
 
             PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
-                if range.start < 100 || range.start % 100 == 0 =>
+                if start < 100 || start % 100 == 0 =>
             {
                 write!(buf, "{}", end)
             }
             PageRangeFormat::Minimal => {
-                write!(buf, "{}", changed_part(range.start, end, 0))
+                write!(buf, "{}", changed_part(start, end, 0))
             }
             PageRangeFormat::MinimalTwo if end < 10 => {
-                write!(buf, "{}", changed_part(range.start, end, 1))
+                write!(buf, "{}", changed_part(start, end, 1))
             }
             PageRangeFormat::Chicago15
-                if range.start > 100 && (1..10).contains(&(range.start % 100)) =>
+                if start > 100 && (1..10).contains(&(start % 100)) =>
             {
-                write!(buf, "{}", changed_part(range.start, end, 0))
+                write!(buf, "{}", changed_part(start, end, 0))
             }
-            PageRangeFormat::Chicago15
-                if closest_smaller_power_of_10(range.start) == 1000 =>
-            {
-                let changed = changed_part(range.start, end, 1);
+            PageRangeFormat::Chicago15 if closest_smaller_power_of_10(start) == 1000 => {
+                let changed = changed_part(start, end, 1);
                 if closest_smaller_power_of_10(changed) == 100 {
                     write!(buf, "{end}")
                 } else {
@@ -688,7 +689,7 @@ impl PageRangeFormat {
             PageRangeFormat::Chicago15
             | PageRangeFormat::Chicago16
             | PageRangeFormat::MinimalTwo => {
-                write!(buf, "{}", changed_part(range.start, end, 1))
+                write!(buf, "{}", changed_part(start, end, 1))
             }
         }
     }
@@ -3674,7 +3675,7 @@ mod test {
     fn page_range() {
         fn run(format: PageRangeFormat, start: i32, end: i32) -> String {
             let mut buf = String::new();
-            format.format(start..end, &mut buf, None).unwrap();
+            format.format(start..=end, &mut buf, None).unwrap();
             buf
         }
 
