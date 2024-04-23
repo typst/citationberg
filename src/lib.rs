@@ -645,99 +645,69 @@ impl PageRangeFormat {
     /// Closely follows the [Haskell implementation of pandoc](https://hackage.haskell.org/package/citeproc-0.8.1/docs/src/Citeproc.Eval.html#pageRange).
     pub fn format(
         self,
-        ranges: &str,
         buf: &mut impl fmt::Write,
+        start: &str,
+        end: &str,
         separator: Option<&str>,
     ) -> Result<(), fmt::Error> {
         let separator = separator.unwrap_or("–");
+        let start = start.trim();
+        let end = end.trim();
 
-        // Split input into different ranges separated by `&` or `,`
-        let mut ranges =
-            group_by(ranges, |c, d| !(c == ',' || c == '&' || d == ',' || d == '&'))
-                .map(str::trim);
+        // Split into the maximal suffix that is all digits (`x`|`y`),
+        // and the prefix.
+        let (start_pre, x) = split_max_digit_suffix(start);
+        let (end_pre, y) = split_max_digit_suffix(end);
 
-        // Write output for each range.
-        ranges.try_for_each(|range| {
-            if range == "&" {
-                write!(buf, " & ")
-            } else if range == "," {
-                write!(buf, ", ")
+        if start_pre == end_pre {
+            let pref = start_pre;
+            let x_len = x.len();
+            let y_len = y.len();
+            // If `y` is shorter, it is a shorthand notation, e.g., `101-7`.
+            let y = if x_len <= y_len {
+                y.to_string()
             } else {
-                // If `-` chars are escaped, write `-`.
-                let mut range_parts = if range.contains("\\-") {
-                    return write!(buf, "{}", range.replace("\\-", "-"));
-                } else {
-                    // Otherwise, split into the two halves of the dash.
-                    range.split(|c| c == '-' || c == '–').map(str::trim)
-                };
+                // Expand `y` to include the missing starting digits from `x`.
+                let mut s = x[..(x_len - y_len)].to_string();
+                s.push_str(y);
+                s
+            };
 
-                // Get start and end; if less than two elements exist, just output what is there
-                let (start, end) = if let Some(start) = range_parts.next() {
-                    if let Some(end) = range_parts.next() {
-                        (start, end)
-                    } else {
-                        return write!(buf, "{start}");
-                    }
-                } else {
-                    return write!(buf, "");
-                };
+            // Write what stays the same early
+            write!(buf, "{pref}{x}{separator}")?;
 
-                // Split into the maximal suffix that is all digits (`x`|`y`),
-                // and the prefix.
-                let (start_pre, x) = split_max_digit_suffix(start);
-                let (end_pre, y) = split_max_digit_suffix(end);
-
-                if start_pre == end_pre {
-                    let pref = start_pre;
-                    let x_len = x.len();
-                    let y_len = y.len();
-                    // If `y` is shorter, it is a shorthand notation, e.g., `101-7`.
-                    let y = if x_len <= y_len {
-                        y.to_string()
-                    } else {
-                        // Expand `y` to include the missing starting digits from `x`.
-                        let mut s = x[..(x_len - y_len)].to_string();
-                        s.push_str(y);
-                        s
-                    };
-
-                    // Write what stays the same early
-                    write!(buf, "{pref}{x}{separator}")?;
-
-                    // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
-                    match self {
-                        PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
-                            if x_len < 3 || x.ends_with("00") =>
-                        {
-                            // For `x` < 100 or multiples of 100, write all digits.
-                            write!(buf, "{y}")
-                        }
-                        PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
-                            if x[x_len - 2..].starts_with('0') =>
-                        {
-                            // For 1 < `x` % 100 < 10, use changed part only.
-                            minimal(buf, 1, x, &y)
-                        }
-                        PageRangeFormat::Chicago15
-                            if x_len == 4 && changed_digits(x, &y) >= 3 =>
-                        {
-                            // If `x` has 4 digits and 3 change, write all digits.
-                            write!(buf, "{y}")
-                        }
-                        PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16 => {
-                            // Otherwise (for Chicago), write at least 2 digits.
-                            minimal(buf, 2, x, &y)
-                        }
-                        PageRangeFormat::Expanded => write!(buf, "{pref}{y}"),
-                        PageRangeFormat::Minimal => minimal(buf, 1, x, &y),
-                        PageRangeFormat::MinimalTwo => minimal(buf, 2, x, &y),
-                    }
-                } else {
-                    // Prefix is different, write with `-` to follow citeproc test suite.
-                    write!(buf, "{start}-{end}")
+            // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
+            match self {
+                PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
+                    if x_len < 3 || x.ends_with("00") =>
+                {
+                    // For `x` < 100 or multiples of 100, write all digits.
+                    write!(buf, "{y}")
                 }
+                PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16
+                    if x[x_len - 2..].starts_with('0') =>
+                {
+                    // For 1 < `x` % 100 < 10, use changed part only.
+                    minimal(buf, 1, x, &y)
+                }
+                PageRangeFormat::Chicago15
+                    if x_len == 4 && changed_digits(x, &y) >= 3 =>
+                {
+                    // If `x` has 4 digits and 3 change, write all digits.
+                    write!(buf, "{y}")
+                }
+                PageRangeFormat::Chicago15 | PageRangeFormat::Chicago16 => {
+                    // Otherwise (for Chicago), write at least 2 digits.
+                    minimal(buf, 2, x, &y)
+                }
+                PageRangeFormat::Expanded => write!(buf, "{pref}{y}"),
+                PageRangeFormat::Minimal => minimal(buf, 1, x, &y),
+                PageRangeFormat::MinimalTwo => minimal(buf, 2, x, &y),
             }
-        })
+        } else {
+            // Prefix is different, write with `-` to follow citeproc test suite.
+            write!(buf, "{start}-{end}")
+        }
     }
 }
 
@@ -3731,9 +3701,9 @@ mod test {
 
     #[test]
     fn page_range() {
-        fn run(format: PageRangeFormat, range: &str) -> String {
+        fn run(format: PageRangeFormat, start: &str, end: &str) -> String {
             let mut buf = String::new();
-            format.format(range, &mut buf, None).unwrap();
+            format.format(&mut buf, start, end, None).unwrap();
             buf
         }
 
@@ -3745,57 +3715,57 @@ mod test {
 
         // https://docs.citationstyles.org/en/stable/specification.html#appendix-v-page-range-formats
 
-        assert_eq!("3–10", run(c15, "3-10"));
-        assert_eq!("71–72", run(c15, "71-72"));
-        assert_eq!("100–104", run(c15, "100-4"));
-        assert_eq!("600–613", run(c15, "600-613"));
-        assert_eq!("1100–1123", run(c15, "1100-1123"));
-        assert_eq!("107–8", run(c15, "107-108"));
-        assert_eq!("505–17", run(c15, "505-517"));
-        assert_eq!("1002–6", run(c15, "1002-1006"));
-        assert_eq!("321–25", run(c15, "321-325"));
-        assert_eq!("415–532", run(c15, "415-532"));
-        assert_eq!("11564–68", run(c15, "11564-11568"));
-        assert_eq!("13792–803", run(c15, "13792-13803"));
-        assert_eq!("1496–1504", run(c15, "1496-1504"));
-        assert_eq!("2787–2816", run(c15, "2787-2816"));
+        assert_eq!("3–10", run(c15, "3", "10"));
+        assert_eq!("71–72", run(c15, "71", "72"));
+        assert_eq!("100–104", run(c15, "100", "4"));
+        assert_eq!("600–613", run(c15, "600", "613"));
+        assert_eq!("1100–1123", run(c15, "1100", "1123"));
+        assert_eq!("107–8", run(c15, "107", "108"));
+        assert_eq!("505–17", run(c15, "505", "517"));
+        assert_eq!("1002–6", run(c15, "1002", "1006"));
+        assert_eq!("321–25", run(c15, "321", "325"));
+        assert_eq!("415–532", run(c15, "415", "532"));
+        assert_eq!("11564–68", run(c15, "11564", "11568"));
+        assert_eq!("13792–803", run(c15, "13792", "13803"));
+        assert_eq!("1496–1504", run(c15, "1496", "1504"));
+        assert_eq!("2787–2816", run(c15, "2787", "2816"));
 
-        assert_eq!("3–10", run(c16, "3-10"));
-        assert_eq!("71–72", run(c16, "71-72"));
-        assert_eq!("92–113", run(c16, "92-113"));
-        assert_eq!("100–104", run(c16, "100-4"));
-        assert_eq!("600–613", run(c16, "600-613"));
-        assert_eq!("1100–1123", run(c16, "1100-1123"));
-        assert_eq!("107–8", run(c16, "107-108"));
-        assert_eq!("505–17", run(c16, "505-517"));
-        assert_eq!("1002–6", run(c16, "1002-1006"));
-        assert_eq!("321–25", run(c16, "321-325"));
-        assert_eq!("415–532", run(c16, "415-532"));
-        assert_eq!("1087–89", run(c16, "1087-1089"));
-        assert_eq!("1496–500", run(c16, "1496-1500"));
-        assert_eq!("11564–68", run(c16, "11564-11568"));
-        assert_eq!("13792–803", run(c16, "13792-13803"));
-        assert_eq!("12991–3001", run(c16, "12991-13001"));
+        assert_eq!("3–10", run(c16, "3", "10"));
+        assert_eq!("71–72", run(c16, "71", "72"));
+        assert_eq!("92–113", run(c16, "92", "113"));
+        assert_eq!("100–104", run(c16, "100", "4"));
+        assert_eq!("600–613", run(c16, "600", "613"));
+        assert_eq!("1100–1123", run(c16, "1100", "1123"));
+        assert_eq!("107–8", run(c16, "107", "108"));
+        assert_eq!("505–17", run(c16, "505", "517"));
+        assert_eq!("1002–6", run(c16, "1002", "1006"));
+        assert_eq!("321–25", run(c16, "321", "325"));
+        assert_eq!("415–532", run(c16, "415", "532"));
+        assert_eq!("1087–89", run(c16, "1087", "1089"));
+        assert_eq!("1496–500", run(c16, "1496", "1500"));
+        assert_eq!("11564–68", run(c16, "11564", "11568"));
+        assert_eq!("13792–803", run(c16, "13792", "13803"));
+        assert_eq!("12991–3001", run(c16, "12991", "13001"));
 
-        assert_eq!("42–45", run(exp, "42-45"));
-        assert_eq!("321–328", run(exp, "321-328"));
-        assert_eq!("2787–2816", run(exp, "2787-2816"));
+        assert_eq!("42–45", run(exp, "42", "45"));
+        assert_eq!("321–328", run(exp, "321", "328"));
+        assert_eq!("2787–2816", run(exp, "2787", "2816"));
 
-        assert_eq!("42–5", run(min, "42-45"));
-        assert_eq!("321–8", run(min, "321-328"));
-        assert_eq!("2787–816", run(min, "2787-2816"));
+        assert_eq!("42–5", run(min, "42", "45"));
+        assert_eq!("321–8", run(min, "321", "328"));
+        assert_eq!("2787–816", run(min, "2787", "2816"));
 
-        assert_eq!("7–8", run(mi2, "7-8"));
-        assert_eq!("42–45", run(mi2, "42-45"));
-        assert_eq!("321–28", run(mi2, "321-328"));
-        assert_eq!("2787–816", run(mi2, "2787-2816"));
+        assert_eq!("7–8", run(mi2, "7", "8"));
+        assert_eq!("42–45", run(mi2, "42", "45"));
+        assert_eq!("321–28", run(mi2, "321", "328"));
+        assert_eq!("2787–816", run(mi2, "2787", "2816"));
     }
 
     #[test]
     fn page_range_prefix() {
-        fn run(format: PageRangeFormat, range: &str) -> String {
+        fn run(format: PageRangeFormat, start: &str, end: &str) -> String {
             let mut buf = String::new();
-            format.format(range, &mut buf, None).unwrap();
+            format.format(&mut buf, start, end, None).unwrap();
             buf
         }
 
@@ -3803,20 +3773,19 @@ mod test {
         let exp = PageRangeFormat::Expanded;
         let min = PageRangeFormat::Minimal;
 
-        assert_eq!("8n11564–68", run(c15, "8n11564-8n1568"));
-        assert_eq!("n11564–68", run(c15, "n11564-n1568"));
-        assert_eq!("n11564-1568", run(c15, "n11564-1568"));
+        assert_eq!("8n11564–68", run(c15, "8n11564", "8n1568"));
+        assert_eq!("n11564–68", run(c15, "n11564", "n1568"));
+        assert_eq!("n11564-1568", run(c15, "n11564", "1568"));
 
-        assert_eq!("N110-5", run(exp, "N110 - 5"));
-        assert_eq!("N110–N115", run(exp, "N110 - N5"));
-        assert_eq!("110-N6", run(exp, "110 - N6"));
-        assert_eq!("N110-P5", run(exp, "N110 - P5"));
-        assert_eq!("123N110-N5", run(exp, "123N110 - N5"));
-        assert_eq!("123N110-N5, 456K200-99", run(exp, "123N110 - N5, 456K200 - 99"));
-        assert_eq!("123N110-N5, 000c23-22", run(exp, "123N110 - N5, 000c23 - 22"));
-        assert_eq!("123N110-N5, 456K200-99", run(exp, "123N110 - N5, 456K200 - 99"));
+        assert_eq!("N110-5", run(exp, "N110 ", " 5"));
+        assert_eq!("N110–N115", run(exp, "N110 ", " N5"));
+        assert_eq!("110-N6", run(exp, "110 ", " N6"));
+        assert_eq!("N110-P5", run(exp, "N110 ", " P5"));
+        assert_eq!("123N110-N5", run(exp, "123N110 ", " N5"));
+        assert_eq!("456K200-99", run(exp, "456K200 ", " 99"));
+        assert_eq!("000c23-22", run(exp, "000c23 ", " 22"));
 
-        assert_eq!("n11564–8", run(min, "n11564 - n1568"));
-        assert_eq!("n11564-1568", run(min, "n11564 - 1568"));
+        assert_eq!("n11564–8", run(min, "n11564 ", " n1568"));
+        assert_eq!("n11564-1568", run(min, "n11564 ", " 1568"));
     }
 }
