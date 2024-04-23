@@ -623,7 +623,7 @@ pub enum StyleClass {
 pub enum PageRangeFormat {
     /// “321–28”
     /// Aliases: `chicago` until CSL 1.1
-    // Rename needed because the number is not used as word boundry by heck.
+    // Rename needed because the number is not used as word boundary by heck.
     #[serde(alias = "chicago")]
     #[serde(rename = "chicago-15")]
     Chicago15,
@@ -1059,7 +1059,7 @@ pub struct Citation {
     )]
     pub disambiguate_add_givenname: bool,
     /// When to expand names that are ambiguous in short form.
-    #[serde(rename = "@disambiguate-add-givenname-rule", default)]
+    #[serde(rename = "@givenname-disambiguation-rule", default)]
     pub givenname_disambiguation_rule: DisambiguationRule,
     /// Disambiguate by adding more names that would otherwise be hidden by et al.
     ///
@@ -1284,7 +1284,7 @@ pub enum SubsequentAuthorSubstituteRule {
     CompleteAll,
     /// When all names match, replace each name.
     CompleteEach,
-    /// Each maching name is replaced.
+    /// Each matching name is replaced.
     PartialEach,
     /// Only the first matching name is replaced.
     PartialFirst,
@@ -2189,7 +2189,7 @@ impl Names {
     }
 
     /// Convert a [`Names`] within a substitute to a name using the parent element.
-    pub fn from_names_substitue(&self, child: &Self) -> Names {
+    pub fn from_names_substitute(&self, child: &Self) -> Names {
         if child.name().is_some()
             || child.et_al().is_some()
             || child.substitute().is_some()
@@ -2520,9 +2520,12 @@ impl NameOptions<'_> {
             return false;
         }
 
-        // If this is a subsequnt citation of the same item, use other CSL options
+        // If this is a subsequent citation of the same item, use other CSL options, if they exist
         let (et_al_min, et_al_use_first) = if is_subsequent {
-            (self.et_al_subsequent_min, self.et_al_subsequent_use_first)
+            (
+                self.et_al_subsequent_min.or(self.et_al_min),
+                self.et_al_subsequent_use_first.or(self.et_al_use_first),
+            )
         } else {
             (self.et_al_min, self.et_al_use_first)
         };
@@ -2552,7 +2555,7 @@ pub enum DelimiterBehavior {
     /// (`-precedes-last`) names.
     #[default]
     Contextual,
-    /// Only use if the preceeding name is inverted (per `name-as-sort-order`).
+    /// Only use if the preceding name is inverted (per `name-as-sort-order`).
     AfterInvertedName,
     /// Always use the delimiter for this condition.
     Always,
@@ -3638,7 +3641,7 @@ mod test {
     }
 
     /// Be sure to check out the CSL
-    /// [styles](https://github.com/citation-style-language/locales) repository
+    /// [styles](https://github.com/citation-style-language/styles) repository
     /// into a sibling folder to run this test.
     #[test]
     fn roundtrip_cbor_all() {

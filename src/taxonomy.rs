@@ -70,7 +70,7 @@ pub enum StandardVariable {
     CallNumber,
     /// Identifier of the item in the input data file (analogous to BibTeX
     /// entrykey); Use this variable to facilitate conversion between
-    /// word-processor and plain-text writing systems; For an identifer intended
+    /// word-processor and plain-text writing systems; For an identifier intended
     /// as formatted output label for a citation (e.g. “Ferr78”), use
     /// citation-label instead.
     CitationKey,
@@ -296,6 +296,7 @@ pub enum NumberVariable {
     /// journal article); Use part-title for the title of the part, if any.
     PartNumber,
     /// Printing number of the item or container holding the item.
+    #[serde(alias = "printing")]
     PrintingNumber,
     /// Section of the item or container holding the item (e.g. “§2.0.1” for a
     /// law; “politics” for a newspaper article).
