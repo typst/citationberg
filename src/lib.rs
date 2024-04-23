@@ -705,8 +705,8 @@ impl PageRangeFormat {
                 PageRangeFormat::MinimalTwo => minimal(buf, 2, x, &y),
             }
         } else {
-            // Prefix is different, write with `-` to follow citeproc test suite.
-            write!(buf, "{start}-{end}")
+            // Prefix is different, write entire range.
+            write!(buf, "{start}{separator}{end}")
         }
     }
 }
@@ -3775,17 +3775,17 @@ mod test {
 
         assert_eq!("8n11564–68", run(c15, "8n11564", "8n1568"));
         assert_eq!("n11564–68", run(c15, "n11564", "n1568"));
-        assert_eq!("n11564-1568", run(c15, "n11564", "1568"));
+        assert_eq!("n11564–1568", run(c15, "n11564", "1568"));
 
-        assert_eq!("N110-5", run(exp, "N110 ", " 5"));
+        assert_eq!("N110–5", run(exp, "N110 ", " 5"));
         assert_eq!("N110–N115", run(exp, "N110 ", " N5"));
-        assert_eq!("110-N6", run(exp, "110 ", " N6"));
-        assert_eq!("N110-P5", run(exp, "N110 ", " P5"));
-        assert_eq!("123N110-N5", run(exp, "123N110 ", " N5"));
-        assert_eq!("456K200-99", run(exp, "456K200 ", " 99"));
-        assert_eq!("000c23-22", run(exp, "000c23 ", " 22"));
+        assert_eq!("110–N6", run(exp, "110 ", " N6"));
+        assert_eq!("N110–P5", run(exp, "N110 ", " P5"));
+        assert_eq!("123N110–N5", run(exp, "123N110 ", " N5"));
+        assert_eq!("456K200–99", run(exp, "456K200 ", " 99"));
+        assert_eq!("000c23–22", run(exp, "000c23 ", " 22"));
 
         assert_eq!("n11564–8", run(min, "n11564 ", " n1568"));
-        assert_eq!("n11564-1568", run(min, "n11564 ", " 1568"));
+        assert_eq!("n11564–1568", run(min, "n11564 ", " 1568"));
     }
 }
