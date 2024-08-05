@@ -431,7 +431,7 @@ pub enum NameVariable {
     /// Combined editor and translator of a work; The citation processory must
     /// be automatically generate if editor and translator variables are
     /// identical; May also be provided directly in item data.
-    #[serde(rename = "editortranslator")]
+    #[serde(alias = "editortranslator")]
     EditorTranslator,
     /// Executive producer (e.g. of a television series).
     ExecutiveProducer,
@@ -496,7 +496,7 @@ impl fmt::Display for NameVariable {
             Self::Director => write!(f, "director"),
             Self::Editor => write!(f, "editor"),
             Self::EditorialDirector => write!(f, "editorial-director"),
-            Self::EditorTranslator => write!(f, "editortranslator"),
+            Self::EditorTranslator => write!(f, "editor-translator"),
             Self::ExecutiveProducer => write!(f, "executive-producer"),
             Self::Guest => write!(f, "guest"),
             Self::Host => write!(f, "host"),
