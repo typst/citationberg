@@ -12,6 +12,8 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 pub enum Variable {
     /// The set of variables with no other attributes.
     Standard(StandardVariable),
+    /// The page variable. Can be formatted as a page range.
+    Page(PageVariable),
     /// Variables that can be formatted as numbers.
     Number(NumberVariable),
     /// Variables that can be formatted as dates.
@@ -39,6 +41,7 @@ impl fmt::Display for Variable {
             Self::Number(v) => v.fmt(f),
             Self::Date(v) => v.fmt(f),
             Self::Name(v) => v.fmt(f),
+            Self::Page(v) => v.fmt(f),
         }
     }
 }
@@ -250,6 +253,32 @@ impl fmt::Display for StandardVariable {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
+/// Number variables as the CSL spec knows them, though we separate between
+/// number variables and page ranges.
+#[serde(untagged)]
+pub enum NumberOrPageVariable {
+    /// The page variable.
+    Page(PageVariable),
+    /// Variables formattable as numbers.
+    Number(NumberVariable),
+}
+
+/// Variable that can be formatted as page numbers
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
+pub enum PageVariable {
+    #[serde(rename = "page")]
+    /// Range of pages the item (e.g. a journal article) covers in a container
+    /// (e.g. a journal issue).
+    Page,
+}
+
+impl fmt::Display for PageVariable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "page")
+    }
+}
+
 /// Variables that can be formatted as numbers.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -286,9 +315,6 @@ pub enum NumberVariable {
     NumberOfPages,
     /// Total number of volumes, used when citing multi-volume books and such.
     NumberOfVolumes,
-    /// Range of pages the item (e.g. a journal article) covers in a container
-    /// (e.g. a journal issue).
-    Page,
     /// First page of the range of pages the item (e.g. a journal article)
     /// covers in a container (e.g. a journal issue).
     PageFirst,
@@ -326,7 +352,6 @@ impl fmt::Display for NumberVariable {
             Self::Number => write!(f, "number"),
             Self::NumberOfPages => write!(f, "number-of-pages"),
             Self::NumberOfVolumes => write!(f, "number-of-volumes"),
-            Self::Page => write!(f, "page"),
             Self::PageFirst => write!(f, "page-first"),
             Self::PartNumber => write!(f, "part-number"),
             Self::PrintingNumber => write!(f, "printing-number"),
@@ -526,6 +551,8 @@ pub enum Term {
     NameVariable(NameVariable),
     /// Variables that can be formatted as numbers.
     NumberVariable(NumberVariable),
+    /// The Page variable.
+    PageVariable,
     /// A locator.
     Locator(Locator),
     /// Terms that are not defined via types, name or number variables.
@@ -597,7 +624,7 @@ impl Term {
                     Self::NumberVariable(NumberVariable::Issue),
                 ) | (
                     Self::Locator(Locator::Page),
-                    Self::NumberVariable(NumberVariable::Page),
+                    Self::PageVariable,
                 ) | (
                     Self::Locator(Locator::Section),
                     Self::NumberVariable(NumberVariable::Section),

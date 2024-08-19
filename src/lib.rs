@@ -48,7 +48,8 @@ use std::num::{NonZeroI16, NonZeroUsize};
 use quick_xml::de::{Deserializer, SliceReader};
 use serde::{Deserialize, Serialize};
 use taxonomy::{
-    DateVariable, Kind, Locator, NameVariable, NumberVariable, OtherTerm, Term, Variable,
+    DateVariable, Kind, Locator, NameVariable, NumberVariable,NumberOrPageVariable,
+    OtherTerm, Term, Variable,
 };
 
 use self::util::*;
@@ -2635,7 +2636,7 @@ pub struct Substitute {
 pub struct Label {
     /// The variable for which to print the label.
     #[serde(rename = "@variable")]
-    pub variable: NumberVariable,
+    pub variable: NumberOrPageVariable,
     /// The form of the label.
     #[serde(flatten)]
     pub label: VariablelessLabel,
@@ -3729,6 +3730,7 @@ mod test {
         assert_eq!("13792–803", run(c15, "13792", "13803"));
         assert_eq!("1496–1504", run(c15, "1496", "1504"));
         assert_eq!("2787–2816", run(c15, "2787", "2816"));
+        assert_eq!("101–8", run(c15, "101", "108"));
 
         assert_eq!("3–10", run(c16, "3", "10"));
         assert_eq!("71–72", run(c16, "71", "72"));
