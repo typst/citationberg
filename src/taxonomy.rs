@@ -264,6 +264,15 @@ pub enum NumberOrPageVariable {
     Number(NumberVariable),
 }
 
+impl From<NumberOrPageVariable> for Term {
+    fn from(value: NumberOrPageVariable) -> Self {
+        match value {
+            NumberOrPageVariable::Page(p) => p.into(),
+            NumberOrPageVariable::Number(n) => n.into(),
+        }
+    }
+}
+
 /// Variable that can be formatted as page numbers
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
 pub enum PageVariable {
@@ -271,6 +280,12 @@ pub enum PageVariable {
     /// Range of pages the item (e.g. a journal article) covers in a container
     /// (e.g. a journal issue).
     Page,
+}
+
+impl From<PageVariable> for Term {
+    fn from(_: PageVariable) -> Self {
+        Self::PageVariable
+    }
 }
 
 impl fmt::Display for PageVariable {
