@@ -48,7 +48,7 @@ use std::num::{NonZeroI16, NonZeroUsize};
 use quick_xml::de::{Deserializer, SliceReader};
 use serde::{Deserialize, Serialize};
 use taxonomy::{
-    DateVariable, Kind, Locator, NameVariable, NumberVariable,NumberOrPageVariable,
+    DateVariable, Kind, Locator, NameVariable, NumberOrPageVariable, NumberVariable,
     OtherTerm, Term, Variable,
 };
 
@@ -743,6 +743,11 @@ fn minimal(
     x: &str,
     y: &str,
 ) -> Result<(), fmt::Error> {
+    if y.len() > x.len() {
+        // y is no abbrev. write it
+        return write!(buf, "{y}")
+    }
+    
     let mut xs = String::new();
     let mut ys = String::new();
     for (c, d) in x.chars().zip(y.chars()).skip_while(|(c, d)| c == d) {
@@ -3748,6 +3753,7 @@ mod test {
         assert_eq!("11564–68", run(c16, "11564", "11568"));
         assert_eq!("13792–803", run(c16, "13792", "13803"));
         assert_eq!("12991–3001", run(c16, "12991", "13001"));
+        assert_eq!("12991–123001", run(c16, "12991", "123001"));
 
         assert_eq!("42–45", run(exp, "42", "45"));
         assert_eq!("321–328", run(exp, "321", "328"));
@@ -3761,6 +3767,18 @@ mod test {
         assert_eq!("42–45", run(mi2, "42", "45"));
         assert_eq!("321–28", run(mi2, "321", "328"));
         assert_eq!("2787–816", run(mi2, "2787", "2816"));
+    }
+
+    #[test]
+    fn test_bug() {
+        fn run(format: PageRangeFormat, start: &str, end: &str) -> String {
+            let mut buf = String::new();
+            format.format(&mut buf, start, end, None).unwrap();
+            buf
+        }
+        let c16 = PageRangeFormat::Chicago16;
+
+        assert_eq!("12991–123001", run(c16, "12991", "123001"));
     }
 
     #[test]
