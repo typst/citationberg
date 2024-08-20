@@ -288,6 +288,12 @@ impl From<PageVariable> for Term {
     }
 }
 
+impl From<PageVariable> for Variable {
+    fn from(value: PageVariable) -> Self {
+        Self::Page(value)
+    }
+}
+
 impl fmt::Display for PageVariable {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "page")
