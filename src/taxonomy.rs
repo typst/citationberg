@@ -643,16 +643,16 @@ impl Term {
                 (
                     Self::Locator(Locator::Issue),
                     Self::NumberVariable(NumberVariable::Issue),
-                ) | (
-                    Self::Locator(Locator::Page),
-                    Self::PageVariable,
-                ) | (
-                    Self::Locator(Locator::Section),
-                    Self::NumberVariable(NumberVariable::Section),
-                ) | (
-                    Self::Locator(Locator::Volume),
-                    Self::NumberVariable(NumberVariable::Volume),
-                ) | (Self::Locator(Locator::Book), Self::Kind(Kind::Book))
+                ) | (Self::Locator(Locator::Page), Self::PageVariable,)
+                    | (
+                        Self::Locator(Locator::Section),
+                        Self::NumberVariable(NumberVariable::Section),
+                    )
+                    | (
+                        Self::Locator(Locator::Volume),
+                        Self::NumberVariable(NumberVariable::Volume),
+                    )
+                    | (Self::Locator(Locator::Book), Self::Kind(Kind::Book))
                     | (Self::Locator(Locator::Chapter), Self::Kind(Kind::Chapter))
                     | (Self::Locator(Locator::Figure), Self::Kind(Kind::Figure))
             )

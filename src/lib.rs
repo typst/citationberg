@@ -745,9 +745,9 @@ fn minimal(
 ) -> Result<(), fmt::Error> {
     if y.len() > x.len() {
         // y is no abbrev. write it
-        return write!(buf, "{y}")
+        return write!(buf, "{y}");
     }
-    
+
     let mut xs = String::new();
     let mut ys = String::new();
     for (c, d) in x.chars().zip(y.chars()).skip_while(|(c, d)| c == d) {
