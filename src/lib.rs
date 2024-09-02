@@ -3769,8 +3769,9 @@ mod test {
         assert_eq!("2787–816", run(mi2, "2787", "2816"));
     }
 
+    /// Tests the bug from PR typst/hayagriva#155
     #[test]
-    fn test_bug() {
+    fn test_bug_hayagriva_115() {
         fn run(format: PageRangeFormat, start: &str, end: &str) -> String {
             let mut buf = String::new();
             format.format(&mut buf, start, end, None).unwrap();

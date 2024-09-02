@@ -13,8 +13,12 @@ pub enum Variable {
     /// The set of variables with no other attributes.
     Standard(StandardVariable),
     /// The page variable. Can be formatted as a page range.
+    ///
+    /// CSL does not distinguish between page ranges and other number variables.
+    /// See the [`NumberOrPageVariable`] enum for a CSL-like view on the
+    /// variants.
     Page(PageVariable),
-    /// Variables that can be formatted as numbers.
+    /// Variables that can be formatted as numbers and are not page ranges.
     Number(NumberVariable),
     /// Variables that can be formatted as dates.
     Date(DateVariable),
