@@ -3018,20 +3018,6 @@ impl Locale {
             })
         })
     }
-
-    /// Create a locale from a CBOR file.
-    #[cfg(feature = "ciborium")]
-    pub fn from_cbor(reader: &[u8]) -> Result<Self, CborDeserializeError> {
-        ciborium::de::from_reader(reader)
-    }
-
-    /// Write the locale to a CBOR file.
-    #[cfg(feature = "ciborium")]
-    pub fn to_cbor(&self) -> Result<Vec<u8>, CborSerializeError> {
-        let mut buf = Vec::new();
-        ciborium::ser::into_writer(self, &mut buf)?;
-        Ok(buf)
-    }
 }
 
 /// Get the right forms of ordinal terms for numbers.
