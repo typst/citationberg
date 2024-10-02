@@ -16,7 +16,7 @@ default = []
 json = ["unscanny"] # adds support for CSL-json parsing
 
 [dependencies]
-quick-xml = { version = "0.31", features = ["serialize", "overlapped-lists"] }
+quick-xml = { version = "0.36.2", features = ["serialize", "overlapped-lists"] }
 serde = { version = "1.0", features = ["derive"] }
 unscanny = { version = "0.1.0", optional = true }
 
