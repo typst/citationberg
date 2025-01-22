@@ -2753,10 +2753,6 @@ pub struct Choose {
     #[serde(rename = "else")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub otherwise: Option<ElseBranch>,
-    /// The delimiter between rendering elements in the chosen branch.
-    #[serde(rename = "@delimiter")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub delimiter: Option<String>,
 }
 
 impl Choose {
