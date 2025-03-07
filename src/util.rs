@@ -13,7 +13,7 @@ pub fn deserialize_bool<'de, D: serde::Deserializer<'de>>(
     let deser = StringOrBool::deserialize(deserializer)?;
     Ok(match deser {
         StringOrBool::Bool(b) => b,
-        StringOrBool::String(s) => s.to_ascii_lowercase() == "true",
+        StringOrBool::String(s) => s.eq_ignore_ascii_case("true"),
     })
 }
 
@@ -30,7 +30,7 @@ pub fn deserialize_bool_option<'de, D: serde::Deserializer<'de>>(
     let res = Option::<StringOrBool>::deserialize(deserializer)?;
     Ok(res.map(|s| match s {
         StringOrBool::Bool(b) => b,
-        StringOrBool::String(s) => s.to_ascii_lowercase() == "true",
+        StringOrBool::String(s) => s.eq_ignore_ascii_case("true"),
     }))
 }
 
