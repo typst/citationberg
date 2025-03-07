@@ -257,15 +257,24 @@ impl fmt::Display for StandardVariable {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
 /// Number variables as the CSL spec knows them, though we separate between
 /// number variables and page ranges.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum NumberOrPageVariable {
     /// The page variable.
     Page(PageVariable),
     /// Variables formattable as numbers.
     Number(NumberVariable),
+}
+
+impl From<NumberOrPageVariable> for Variable {
+    fn from(value: NumberOrPageVariable) -> Self {
+        match value {
+            NumberOrPageVariable::Page(p) => p.into(),
+            NumberOrPageVariable::Number(n) => n.into(),
+        }
+    }
 }
 
 impl From<NumberOrPageVariable> for Term {
