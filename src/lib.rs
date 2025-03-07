@@ -48,8 +48,8 @@ use std::num::{NonZeroI16, NonZeroUsize};
 use quick_xml::de::{Deserializer, SliceReader};
 use serde::{Deserialize, Serialize};
 use taxonomy::{
-    DateVariable, Kind, Locator, NameVariable, NumberOrPageVariable, NumberVariable,
-    OtherTerm, Term, Variable,
+    DateVariable, Kind, Locator, NameVariable, NumberOrPageVariable, OtherTerm, Term,
+    Variable,
 };
 
 use self::util::*;
@@ -1481,7 +1481,7 @@ impl LayoutRenderingElement {
                 }
             }
             Self::Number(n) => {
-                if Variable::Number(n.variable) == variable {
+                if Variable::from(n.variable) == variable {
                     Some(self.clone())
                 } else {
                     None
@@ -1899,7 +1899,7 @@ pub enum LongShortForm {
 pub struct Number {
     /// The variable whose value is used.
     #[serde(rename = "@variable")]
-    pub variable: NumberVariable,
+    pub variable: NumberOrPageVariable,
     /// How the number is formatted.
     #[serde(rename = "@form", default)]
     pub form: NumberForm,
