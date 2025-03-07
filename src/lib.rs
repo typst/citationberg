@@ -2285,7 +2285,10 @@ impl Name {
     }
 
     /// Retrieve the [`NameOptions`] for this name.
-    pub fn options<'s>(&'s self, inherited: &'s InheritableNameOptions) -> NameOptions {
+    pub fn options<'s>(
+        &'s self,
+        inherited: &'s InheritableNameOptions,
+    ) -> NameOptions<'s> {
         let applied = inherited.apply(&self.options);
         NameOptions {
             and: applied.and,
