@@ -678,7 +678,6 @@ impl Term {
 /// Kind of the cited item.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
-
 pub enum Kind {
     /// A self-contained work made widely available but not published in a
     /// journal or other publication; Use for preprints, working papers, and
