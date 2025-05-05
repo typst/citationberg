@@ -58,7 +58,27 @@ use self::util::*;
 pub type XmlResult<T> = Result<T, XmlError>;
 
 /// Error type for functions that serialize and deserialize XML.
-pub type XmlError = quick_xml::de::DeError;
+#[derive(Debug, Clone)]
+pub struct XmlError {
+    source: quick_xml::de::DeError,
+    path: Option<serde_path_to_error::Path>,
+}
+
+impl std::error::Error for XmlError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+impl std::fmt::Display for XmlError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.source)?;
+        if let Some(path) = &self.path {
+            write!(f, " ({})", path)?;
+        }
+        Ok(())
+    }
+}
 
 const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(4096);
 
@@ -226,6 +246,7 @@ impl IndependentStyle {
         let mut track = serde_path_to_error::Track::new();
         let de = serde_path_to_error::Deserializer::new(de, &mut track);
         IndependentStyle::deserialize(de)
+            .map_err(|err| XmlError { source: err, path: Some(track.path()) })
     }
 
     /// Remove all non-required data that does not influence the style's
@@ -277,8 +298,11 @@ pub struct DependentStyle {
 impl DependentStyle {
     /// Create a style from an XML string.
     pub fn from_xml(xml: &str) -> XmlResult<Self> {
-        let de = &mut deserializer(xml);
+        let mut de = deserializer(xml);
+        let mut track = serde_path_to_error::Track::new();
+        let de = serde_path_to_error::Deserializer::new(&mut de, &mut track);
         DependentStyle::deserialize(de)
+            .map_err(|err| XmlError { source: err, path: Some(track.path()) })
     }
 
     /// Remove all non-required data that does not influence the style's
@@ -317,15 +341,22 @@ pub enum Style {
 impl Style {
     /// Create a style from an XML string.
     pub fn from_xml(xml: &str) -> XmlResult<Self> {
-        let de = &mut deserializer(xml);
+        let mut de = deserializer(xml);
+        let mut track = serde_path_to_error::Track::new();
+        let de = serde_path_to_error::Deserializer::new(&mut de, &mut track);
         Style::deserialize(de)
+            .map_err(|err| XmlError { source: err, path: Some(track.path()) })
     }
 
     /// Write the style to an XML string.
     pub fn to_xml(&self) -> XmlResult<String> {
         let mut buf = String::new();
-        let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
-        self.serialize(ser)?;
+        let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))
+            .map_err(|err| XmlError { source: err, path: None })?;
+        let mut track = serde_path_to_error::Track::new();
+        let ser = serde_path_to_error::Serializer::new(ser, &mut track);
+        self.serialize(ser)
+            .map_err(|err| XmlError { source: err, path: Some(track.path()) })?;
         Ok(buf)
     }
 
@@ -2963,15 +2994,23 @@ pub struct LocaleFile {
 impl LocaleFile {
     /// Create a locale from an XML string.
     pub fn from_xml(xml: &str) -> XmlResult<Self> {
-        let locale: Self = quick_xml::de::from_str(xml)?;
+        let mut de = quick_xml::de::Deserializer::from_str(xml);
+        let mut track = serde_path_to_error::Track::new();
+        let de = serde_path_to_error::Deserializer::new(&mut de, &mut track);
+        let locale: Self = Self::deserialize(de)
+            .map_err(|err| XmlError { source: err, path: Some(track.path()) })?;
         Ok(locale)
     }
 
     /// Write the locale to an XML string.
     pub fn to_xml(&self) -> XmlResult<String> {
         let mut buf = String::new();
-        let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
-        self.serialize(ser)?;
+        let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))
+            .map_err(|err| XmlError { source: err, path: None })?;
+        let mut track = serde_path_to_error::Track::new();
+        let ser = serde_path_to_error::Serializer::new(ser, &mut track);
+        self.serialize(ser)
+            .map_err(|err| XmlError { source: err, path: Some(track.path()) })?;
         Ok(buf)
     }
 }
