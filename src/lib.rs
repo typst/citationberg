@@ -223,6 +223,8 @@ impl IndependentStyle {
     /// Create a style from an XML string.
     pub fn from_xml(xml: &str) -> XmlResult<Self> {
         let de = &mut deserializer(xml);
+        let mut track = serde_path_to_error::Track::new();
+        let de = serde_path_to_error::Deserializer::new(de, &mut track);
         IndependentStyle::deserialize(de)
     }
 
