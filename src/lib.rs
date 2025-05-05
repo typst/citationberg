@@ -228,6 +228,8 @@ impl IndependentStyle {
     /// Create a style from an XML string.
     pub fn from_xml(xml: &str) -> XmlDeResult<Self> {
         let de = &mut deserializer(xml);
+        let mut track = serde_path_to_error::Track::new();
+        let de = serde_path_to_error::Deserializer::new(de, &mut track);
         IndependentStyle::deserialize(de)
     }
 
@@ -281,6 +283,8 @@ impl DependentStyle {
     /// Create a style from an XML string.
     pub fn from_xml(xml: &str) -> XmlDeResult<Self> {
         let de = &mut deserializer(xml);
+        let mut track = serde_path_to_error::Track::new();
+        let de = serde_path_to_error::Deserializer::new(de, &mut track);
         DependentStyle::deserialize(de)
     }
 
@@ -3824,7 +3828,7 @@ mod test {
 
     #[test]
     fn locale_in_style_file() {
-        let style_str = r#"<style 
+        let style_str = r#"<style
       xmlns="http://purl.org/net/xbiblio/csl"
       class="note"
       version="1.0">
