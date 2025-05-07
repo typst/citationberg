@@ -60,8 +60,10 @@ pub type XmlResult<T> = Result<T, XmlError>;
 /// Error type for functions that serialize and deserialize XML.
 #[derive(Debug, Clone)]
 pub struct XmlError {
-    source: quick_xml::de::DeError,
-    path: Option<serde_path_to_error::Path>,
+    /// The underlying XML error.
+    pub source: quick_xml::de::DeError,
+    /// The path to the error location in the XML.
+    pub path: Option<serde_path_to_error::Path>,
 }
 
 impl std::error::Error for XmlError {
