@@ -59,8 +59,10 @@ pub type XmlDeResult<T> = Result<T, XmlDeError>;
 /// Error type for functions that deserialize XML.
 #[derive(Debug, Clone)]
 pub struct XmlDeError {
-    source: quick_xml::de::DeError,
-    path: Option<serde_path_to_error::Path>,
+    /// The underlying XML error.
+    pub source: quick_xml::de::DeError,
+    /// The path to the error location in the XML.
+    pub path: Option<serde_path_to_error::Path>,
 }
 
 /// Result type for functions that serialize XML.
@@ -69,8 +71,10 @@ pub type XmlSeResult<T> = Result<T, XmlSeError>;
 /// Error type for functions that serialize XML.
 #[derive(Debug, Clone)]
 pub struct XmlSeError {
-    source: quick_xml::se::SeError,
-    path: Option<serde_path_to_error::Path>,
+    /// The underlying XML error.
+    pub source: quick_xml::se::SeError,
+    /// The path to the error location in the XML.
+    pub path: Option<serde_path_to_error::Path>,
 }
 
 const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(u32::MAX as usize);
