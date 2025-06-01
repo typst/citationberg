@@ -42,7 +42,6 @@ pub mod taxonomy;
 mod util;
 
 use std::fmt::{self, Debug};
-use std::iter::repeat;
 use std::num::{NonZeroI16, NonZeroUsize};
 
 use quick_xml::de::{Deserializer, SliceReader};
@@ -717,7 +716,7 @@ impl PageRangeFormat {
 /// Returns as soon as two digits differ. (In that part we differ from the Haskell version. I think this makes more sense.)
 fn changed_digits(x: &str, y: &str) -> usize {
     let x = if x.len() < y.len() {
-        let mut s = String::from_iter(repeat(' ').take(y.len() - x.len()));
+        let mut s = String::from_iter(std::iter::repeat_n(' ', y.len() - x.len()));
         s.push_str(x);
         s
     } else {
