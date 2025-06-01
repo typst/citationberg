@@ -151,6 +151,9 @@ pub enum StandardVariable {
     OriginalTitle,
     /// Title of the specific part of an item being cited.
     PartTitle,
+    /// arXiv reference number.
+    #[serde(rename = "ARXIV")]
+    ARXIV,
     /// PubMed Central reference number.
     #[serde(rename = "PMCID")]
     PMCID,
@@ -238,6 +241,7 @@ impl fmt::Display for StandardVariable {
             Self::OriginalPublisherPlace => write!(f, "original-publisher-place"),
             Self::OriginalTitle => write!(f, "original-title"),
             Self::PartTitle => write!(f, "part-title"),
+            Self::ARXIV => write!(f, "ARXIV"),
             Self::PMCID => write!(f, "PMCID"),
             Self::PMID => write!(f, "PMID"),
             Self::Publisher => write!(f, "publisher"),
