@@ -509,11 +509,7 @@ impl<'a> LocaleCode {
             .split('-')
             .enumerate()
             .filter_map(|(i, e)| {
-                if i == 0 && ["x", "X", "i", "I"].contains(&e) {
-                    None
-                } else {
-                    Some(e)
-                }
+                if i == 0 && ["x", "X", "i", "I"].contains(&e) { None } else { Some(e) }
             })
             .skip(1)
     }
@@ -2832,11 +2828,7 @@ impl ChooseBranch {
     /// here.
     pub fn test(&self) -> Option<ChooseTest> {
         if let Some(disambiguate) = self.disambiguate {
-            if !disambiguate {
-                None
-            } else {
-                Some(ChooseTest::Disambiguate)
-            }
+            if !disambiguate { None } else { Some(ChooseTest::Disambiguate) }
         } else if let Some(is_numeric) = &self.is_numeric {
             Some(ChooseTest::IsNumeric(is_numeric))
         } else if let Some(is_uncertain_date) = &self.is_uncertain_date {
@@ -3085,11 +3077,7 @@ impl<'a> OrdinalLookup<'a> {
                     let diff_other = (n - other_n as i32).abs();
                     let diff_curr = (n - curr_n as i32).abs();
 
-                    if diff_other <= diff_curr {
-                        other_match
-                    } else {
-                        current
-                    }
+                    if diff_other <= diff_curr { other_match } else { current }
                 }
             })
         };
