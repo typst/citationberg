@@ -4,7 +4,7 @@ use std::fmt;
 use std::num::IntErrorKind;
 use std::str::FromStr;
 
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 /// A CSL variable.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Deserialize, Serialize)]
@@ -30,11 +30,7 @@ impl Variable {
     /// Check if the variable starts with `number-of-` to control contextual
     /// label behavior.
     pub const fn is_number_of_variable(self) -> bool {
-        if let Self::Number(v) = self {
-            v.is_number_of_variable()
-        } else {
-            false
-        }
+        if let Self::Number(v) = self { v.is_number_of_variable() } else { false }
     }
 }
 
@@ -1413,8 +1409,8 @@ impl fmt::Display for OtherTerm {
             Self::TelevisionSeriesEpisode => write!(f, "television-series-episode"),
             Self::Video => write!(f, "video"),
             Self::WorkingPaper => write!(f, "working-paper"),
-            Self::OrdinalN(i) => write!(f, "ordinal-{:02}", i),
-            Self::LongOrdinal(i) => write!(f, "long-ordinal-{:02}", i),
+            Self::OrdinalN(i) => write!(f, "ordinal-{i:02}"),
+            Self::LongOrdinal(i) => write!(f, "long-ordinal-{i:02}"),
             Self::Season01 => write!(f, "season-01"),
             Self::Season02 => write!(f, "season-02"),
             Self::Season03 => write!(f, "season-03"),

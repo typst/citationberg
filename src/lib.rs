@@ -42,7 +42,6 @@ pub mod taxonomy;
 mod util;
 
 use std::fmt::{self, Debug};
-use std::iter::repeat;
 use std::num::{NonZeroI16, NonZeroUsize};
 
 use quick_xml::de::{Deserializer, SliceReader};
@@ -509,11 +508,7 @@ impl<'a> LocaleCode {
             .split('-')
             .enumerate()
             .filter_map(|(i, e)| {
-                if i == 0 && ["x", "X", "i", "I"].contains(&e) {
-                    None
-                } else {
-                    Some(e)
-                }
+                if i == 0 && ["x", "X", "i", "I"].contains(&e) { None } else { Some(e) }
             })
             .skip(1)
     }
@@ -717,7 +712,7 @@ impl PageRangeFormat {
 /// Returns as soon as two digits differ. (In that part we differ from the Haskell version. I think this makes more sense.)
 fn changed_digits(x: &str, y: &str) -> usize {
     let x = if x.len() < y.len() {
-        let mut s = String::from_iter(repeat(' ').take(y.len() - x.len()));
+        let mut s = String::from_iter(std::iter::repeat_n(' ', y.len() - x.len()));
         s.push_str(x);
         s
     } else {
@@ -2832,11 +2827,7 @@ impl ChooseBranch {
     /// here.
     pub fn test(&self) -> Option<ChooseTest> {
         if let Some(disambiguate) = self.disambiguate {
-            if !disambiguate {
-                None
-            } else {
-                Some(ChooseTest::Disambiguate)
-            }
+            if !disambiguate { None } else { Some(ChooseTest::Disambiguate) }
         } else if let Some(is_numeric) = &self.is_numeric {
             Some(ChooseTest::IsNumeric(is_numeric))
         } else if let Some(is_uncertain_date) = &self.is_uncertain_date {
@@ -3085,11 +3076,7 @@ impl<'a> OrdinalLookup<'a> {
                     let diff_other = (n - other_n as i32).abs();
                     let diff_curr = (n - curr_n as i32).abs();
 
-                    if diff_other <= diff_curr {
-                        other_match
-                    } else {
-                        current
-                    }
+                    if diff_other <= diff_curr { other_match } else { current }
                 }
             })
         };
@@ -3548,7 +3535,7 @@ mod test {
         );
 
         if failures > 0 {
-            panic!("{} tests failed", failures);
+            panic!("{failures} tests failed");
         }
     }
 
