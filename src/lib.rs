@@ -419,7 +419,7 @@ impl fmt::Display for StyleValidationError {
     }
 }
 
-fn deserializer(xml: &str) -> Deserializer<SliceReader<'_>> {
+fn deserializer(xml: &str) -> Deserializer<'_, SliceReader<'_>> {
     let mut style_deserializer = Deserializer::from_str(xml);
     style_deserializer.event_buffer_size(EVENT_BUFFER_SIZE);
     style_deserializer
@@ -2825,7 +2825,7 @@ pub struct ChooseBranch {
 impl ChooseBranch {
     /// Retrieve the test of this branch. Valid CSL files must return `Some`
     /// here.
-    pub fn test(&self) -> Option<ChooseTest> {
+    pub fn test(&self) -> Option<ChooseTest<'_>> {
         if let Some(disambiguate) = self.disambiguate {
             if !disambiguate { None } else { Some(ChooseTest::Disambiguate) }
         } else if let Some(is_numeric) = &self.is_numeric {
