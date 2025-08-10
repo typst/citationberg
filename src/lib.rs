@@ -59,7 +59,7 @@ pub type XmlResult<T> = Result<T, XmlError>;
 /// Error type for functions that serialize and deserialize XML.
 pub type XmlError = quick_xml::de::DeError;
 
-const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(4096);
+const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(8192);
 
 /// Allow every struct with formatting properties to convert to a `Formatting`.
 pub trait ToFormatting {
