@@ -3594,6 +3594,39 @@ mod test {
         check_locale("tests/locales");
     }
 
+    /// Ensure string trimming is not performed on deserialized locales
+    /// See https://github.com/typst/citationberg/issues/27
+    #[test]
+    fn test_string_trimming() {
+        let source = fs::read_to_string("tests/locales/locales-en-US.xml").unwrap();
+        let de = &mut deserializer(&source);
+        let locale: LocaleFile = serde_path_to_error::deserialize(de).unwrap();
+        assert_eq!(
+            locale
+                .terms
+                .as_ref()
+                .unwrap()
+                .terms
+                .iter()
+                .find(|t| t.name == Term::Other(OtherTerm::Ad))
+                .unwrap()
+                .localization,
+            Some(" AD".to_owned())
+        );
+
+        assert_eq!(
+            locale
+                .terms
+                .unwrap()
+                .terms
+                .iter()
+                .find(|t| t.name == Term::Other(OtherTerm::Bc))
+                .unwrap()
+                .localization,
+            Some(" BC".to_owned())
+        );
+    }
+
     /// Be sure to check out the CSL
     /// [styles](https://github.com/citation-style-language/styles) repository
     /// into a sibling folder to run this test.
