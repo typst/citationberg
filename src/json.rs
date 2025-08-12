@@ -15,12 +15,12 @@ pub struct Item(pub BTreeMap<String, Value>);
 
 impl Item {
     /// The item's ID.
-    pub fn id(&self) -> Option<Cow<str>> {
+    pub fn id(&self) -> Option<Cow<'_, str>> {
         self.0.get("id")?.to_str()
     }
 
     /// The item type.
-    pub fn type_(&self) -> Option<Cow<str>> {
+    pub fn type_(&self) -> Option<Cow<'_, str>> {
         self.0.get("type")?.to_str()
     }
 
@@ -51,7 +51,7 @@ pub enum Value {
 
 impl Value {
     /// Convert to a string if this is a string or number.
-    pub fn to_str(&self) -> Option<Cow<str>> {
+    pub fn to_str(&self) -> Option<Cow<'_, str>> {
         match self {
             Value::String(s) => Some(s.as_str().into()),
             Value::Number(n) => Some(n.to_string().into()),

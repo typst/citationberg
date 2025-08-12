@@ -53,11 +53,17 @@ use taxonomy::{
 
 use self::util::*;
 
-/// Result type for functions that serialize and deserialize XML.
-pub type XmlResult<T> = Result<T, XmlError>;
+/// Result type for functions that deserialize XML.
+pub type XmlDeResult<T> = Result<T, XmlDeError>;
 
-/// Error type for functions that serialize and deserialize XML.
-pub type XmlError = quick_xml::de::DeError;
+/// Error type for functions that deserialize XML.
+pub type XmlDeError = quick_xml::de::DeError;
+
+/// Result type for functions that serialize XML.
+pub type XmlSeResult<T> = Result<T, XmlSeError>;
+
+/// Error type for functions that serialize XML.
+pub type XmlSeError = quick_xml::se::SeError;
 
 const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(8192);
 
@@ -220,7 +226,7 @@ pub struct IndependentStyle {
 
 impl IndependentStyle {
     /// Create a style from an XML string.
-    pub fn from_xml(xml: &str) -> XmlResult<Self> {
+    pub fn from_xml(xml: &str) -> XmlDeResult<Self> {
         let de = &mut deserializer(xml);
         IndependentStyle::deserialize(de)
     }
@@ -273,7 +279,7 @@ pub struct DependentStyle {
 
 impl DependentStyle {
     /// Create a style from an XML string.
-    pub fn from_xml(xml: &str) -> XmlResult<Self> {
+    pub fn from_xml(xml: &str) -> XmlDeResult<Self> {
         let de = &mut deserializer(xml);
         DependentStyle::deserialize(de)
     }
@@ -313,13 +319,13 @@ pub enum Style {
 
 impl Style {
     /// Create a style from an XML string.
-    pub fn from_xml(xml: &str) -> XmlResult<Self> {
+    pub fn from_xml(xml: &str) -> XmlDeResult<Self> {
         let de = &mut deserializer(xml);
         Style::deserialize(de)
     }
 
     /// Write the style to an XML string.
-    pub fn to_xml(&self) -> XmlResult<String> {
+    pub fn to_xml(&self) -> XmlSeResult<String> {
         let mut buf = String::new();
         let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
         self.serialize(ser)?;
@@ -2933,7 +2939,7 @@ pub struct LocaleFile {
     #[serde(rename = "@version")]
     pub version: String,
     /// Which languages or dialects this data applies to.
-    #[serde(rename = "@lang")]
+    #[serde(rename = "@xml:lang")]
     pub lang: LocaleCode,
     /// Metadata of the locale.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2951,13 +2957,13 @@ pub struct LocaleFile {
 
 impl LocaleFile {
     /// Create a locale from an XML string.
-    pub fn from_xml(xml: &str) -> XmlResult<Self> {
+    pub fn from_xml(xml: &str) -> XmlDeResult<Self> {
         let locale: Self = quick_xml::de::from_str(xml)?;
         Ok(locale)
     }
 
     /// Write the locale to an XML string.
-    pub fn to_xml(&self) -> XmlResult<String> {
+    pub fn to_xml(&self) -> XmlSeResult<String> {
         let mut buf = String::new();
         let ser = quick_xml::se::Serializer::with_root(&mut buf, Some("style"))?;
         self.serialize(ser)?;
