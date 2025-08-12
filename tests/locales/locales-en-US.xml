@@ -28,16 +28,16 @@
     <rights license="http://creativecommons.org/licenses/by-sa/3.0/">This work is licensed under a Creative Commons Attribution-ShareAlike 3.0 License</rights>
     <updated>2025-06-24T00:00:00+00:00</updated>
   </info>
-  <style-options punctuation-in-quote="true"/>
+  <style-options punctuation-in-quote="true" />
   <date form="text">
-    <date-part name="month" suffix=" "/>
-    <date-part name="day" suffix=", "/>
-    <date-part name="year"/>
+    <date-part name="month" suffix=" " />
+    <date-part name="day" suffix=", " />
+    <date-part name="year" />
   </date>
   <date form="numeric">
-    <date-part name="month" form="numeric-leading-zeros" suffix="/"/>
-    <date-part name="day" form="numeric-leading-zeros" suffix="/"/>
-    <date-part name="year"/>
+    <date-part name="month" form="numeric-leading-zeros" suffix="/" />
+    <date-part name="day" form="numeric-leading-zeros" suffix="/" />
+    <date-part name="year" />
   </date>
   <terms>
     <!-- LONG GENERAL TERMS -->
@@ -368,7 +368,7 @@
       <multiple>tables</multiple>
     </term>
     <!-- A timestamp is a composite of hours, minutes, etc. and therefore has no default label. -->
-    <term name="timestamp"/>
+    <term name="timestamp" />
     <term name="title-locator">
       <single>title</single>
       <multiple>titles</multiple>
