@@ -65,7 +65,7 @@ pub type XmlSeResult<T> = Result<T, XmlSeError>;
 /// Error type for functions that serialize XML.
 pub type XmlSeError = quick_xml::se::SeError;
 
-const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(10240);
+const EVENT_BUFFER_SIZE: Option<NonZeroUsize> = NonZeroUsize::new(60000);
 
 /// Allow every struct with formatting properties to convert to a `Formatting`.
 pub trait ToFormatting {
