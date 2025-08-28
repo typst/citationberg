@@ -2977,7 +2977,7 @@ impl LocaleFile {
 pub struct Locale {
     /// Which languages or dialects this data applies to. Must be `Some` if this
     /// appears in a locale file.
-    #[serde(rename = "@lang")]
+    #[serde(rename = "@xml:lang")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lang: Option<LocaleCode>,
     /// Metadata of the locale.
@@ -3819,5 +3819,43 @@ mod test {
 
         assert_eq!("n11564–8", run(min, "n11564 ", " n1568"));
         assert_eq!("n11564–1568", run(min, "n11564 ", " 1568"));
+    }
+
+    #[test]
+    fn locale_in_style_file() {
+        let style_str = r#"<style 
+      xmlns="http://purl.org/net/xbiblio/csl"
+      class="note"
+      version="1.0">
+  <info>
+    <id />
+    <title />
+    <updated>2009-08-10T04:49:00+09:00</updated>
+  </info>
+   <locale>
+    <date form="text">
+      <date-part name="day" suffix=" "/>
+      <date-part name="month" form="long" suffix=" "/>
+      <date-part name="year"/>
+    </date>
+  </locale>
+   <locale xml:lang="en">
+    <date form="text">
+      <date-part name="year"/>
+      <date-part name="month" form="long" prefix=" "/>
+      <date-part name="day" prefix=" "/>
+    </date>
+  </locale>
+  <citation>
+    <layout>
+      <text variable="title" suffix=": "/>
+      <date variable="issued" date-parts="year-month-day" form="text" prefix="(" suffix=")"/>
+    </layout>
+  </citation>
+</style>"#;
+        let de = &mut deserializer(style_str);
+        let result: Result<RawStyle, _> = serde_path_to_error::deserialize(de);
+        let style = result.unwrap();
+        assert!(style.locale[1].lang.as_ref().unwrap().is_english());
     }
 }
