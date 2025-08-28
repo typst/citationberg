@@ -3820,4 +3820,20 @@ mod test {
         assert_eq!("n11564–8", run(min, "n11564 ", " n1568"));
         assert_eq!("n11564–1568", run(min, "n11564 ", " 1568"));
     }
+
+    #[test]
+    fn white_space_not_trimmed() {
+        let en = fs::read_to_string("tests/locales/locales-en-US.xml").unwrap();
+        let de = &mut deserializer(&en);
+        let result: Result<LocaleFile, _> = serde_path_to_error::deserialize(de);
+        let en = result.unwrap();
+        let terms = en.terms.unwrap();
+        let ad = terms
+            .terms
+            .iter()
+            .find(|t| matches!(t.name, Term::Other(OtherTerm::Ad)))
+            .unwrap();
+        eprint!("{:?}", ad);
+        assert_eq!(" AD", ad.localization.as_ref().unwrap());
+    }
 }
