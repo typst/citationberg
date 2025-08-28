@@ -3856,6 +3856,6 @@ mod test {
         let de = &mut deserializer(style_str);
         let result: Result<RawStyle, _> = serde_path_to_error::deserialize(de);
         let style = result.unwrap();
-        assert!((&style.locale[1]).lang.as_ref().unwrap().is_english());
+        assert!(style.locale[1].lang.as_ref().unwrap().is_english());
     }
 }
