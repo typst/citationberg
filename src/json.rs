@@ -134,11 +134,9 @@ impl TryFrom<DateValue> for FixedDateRange {
                 Ok(raw)
             }
             DateValue::DateParts { date_parts, season, .. } => {
-                let res = date_parts.try_into();
-                res.map(|mut r: FixedDateRange| {
-                    r.start.season = season.and_then(|s| s.parse().ok());
-                    r
-                })
+                let res = date_parts.try_into()?;
+                res.start.season = season.and_then(|s| s.parse().ok());
+                Ok(res)
             }
         }
     }
