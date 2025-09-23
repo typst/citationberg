@@ -1,8 +1,8 @@
 //! CSL constants that describe entries, terms, and variables.
 
+use std::fmt;
 use std::num::IntErrorKind;
 use std::str::FromStr;
-use std::{fmt, num::ParseIntError};
 
 use serde::{Deserialize, Deserializer, Serialize, de};
 
@@ -1519,34 +1519,5 @@ impl From<Season> for OtherTerm {
             Season::Autumn => OtherTerm::Season03,
             Season::Winter => OtherTerm::Season04,
         }
-    }
-}
-
-/// Error parsing a string to a [Season].
-pub enum SeasonParseError {
-    /// Error occurs converting a [u8] to a [Season].
-    Conversion(SeasonConversionError),
-    /// Error occurs converting a string to a [u8].
-    Parsing(ParseIntError),
-}
-
-impl From<SeasonConversionError> for SeasonParseError {
-    fn from(value: SeasonConversionError) -> Self {
-        Self::Conversion(value)
-    }
-}
-
-impl From<ParseIntError> for SeasonParseError {
-    fn from(value: ParseIntError) -> Self {
-        SeasonParseError::Parsing(value)
-    }
-}
-
-impl FromStr for Season {
-    type Err = SeasonParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let val: u8 = s.parse()?;
-        Ok(val.try_into()?)
     }
 }

@@ -128,17 +128,17 @@ impl TryFrom<DateValue> for FixedDateRange {
     type Error = ();
 
     fn try_from(value: DateValue) -> Result<Self, Self::Error> {
-        match value {
-            DateValue::Raw { mut raw, season, .. } => {
-                raw.start.season = season.and_then(|s| s.parse().ok());
-                Ok(raw)
-            }
+        let (mut fixed, season) = match value {
+            DateValue::Raw { raw, season, .. } => (raw, season),
             DateValue::DateParts { date_parts, season, .. } => {
                 let res = date_parts.try_into()?;
-                res.start.season = season.and_then(|s| s.parse().ok());
-                Ok(res)
+                (res, season)
             }
-        }
+        };
+        fixed.start.season = season
+            .and_then(|s| s.parse::<u8>().ok())
+            .and_then(|u| u.try_into().ok());
+        Ok(fixed)
     }
 }
 
