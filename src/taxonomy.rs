@@ -1,8 +1,8 @@
 //! CSL constants that describe entries, terms, and variables.
 
-use std::fmt;
 use std::num::IntErrorKind;
 use std::str::FromStr;
+use std::{fmt, num::ParseIntError};
 
 use serde::{Deserialize, Deserializer, Serialize, de};
 
@@ -1471,5 +1471,82 @@ impl fmt::Display for TermConversionError {
 impl From<OtherTerm> for Term {
     fn from(value: OtherTerm) -> Self {
         Self::Other(value)
+    }
+}
+
+/// Seasons of the year.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum Season {
+    /// Spring.
+    Spring,
+    /// Summer.
+    Summer,
+    /// Autumn.
+    Autumn,
+    /// Winter.
+    Winter,
+}
+
+/// Error from converting a [u8] to a [Season].
+#[derive(Debug, Clone, Copy)]
+pub struct SeasonConversionError(u8);
+
+impl fmt::Display for SeasonConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Cannot convert {} to a season", self.0)
+    }
+}
+
+impl TryFrom<u8> for Season {
+    type Error = SeasonConversionError;
+
+    fn try_from(val: u8) -> Result<Season, SeasonConversionError> {
+        match val {
+            0 => Ok(Season::Spring),
+            1 => Ok(Season::Summer),
+            2 => Ok(Season::Autumn),
+            3 => Ok(Season::Winter),
+            i => Err(SeasonConversionError(i)),
+        }
+    }
+}
+
+impl From<Season> for OtherTerm {
+    fn from(value: Season) -> Self {
+        match value {
+            Season::Spring => OtherTerm::Season01,
+            Season::Summer => OtherTerm::Season02,
+            Season::Autumn => OtherTerm::Season03,
+            Season::Winter => OtherTerm::Season04,
+        }
+    }
+}
+
+/// Error parsing a string to a [Season].
+pub enum SeasonParseError {
+    /// Error occurs converting a [u8] to a [Season].
+    Conversion(SeasonConversionError),
+    /// Error occurs converting a string to a [u8].
+    Parsing(ParseIntError),
+}
+
+impl From<SeasonConversionError> for SeasonParseError {
+    fn from(value: SeasonConversionError) -> Self {
+        Self::Conversion(value)
+    }
+}
+
+impl From<ParseIntError> for SeasonParseError {
+    fn from(value: ParseIntError) -> Self {
+        SeasonParseError::Parsing(value)
+    }
+}
+
+impl FromStr for Season {
+    type Err = SeasonParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let val: u8 = s.parse()?;
+        Ok(val.try_into()?)
     }
 }
