@@ -1502,10 +1502,10 @@ impl TryFrom<u8> for Season {
 
     fn try_from(val: u8) -> Result<Season, SeasonConversionError> {
         match val {
-            0 => Ok(Season::Spring),
-            1 => Ok(Season::Summer),
-            2 => Ok(Season::Autumn),
-            3 => Ok(Season::Winter),
+            1 => Ok(Season::Spring),
+            2 => Ok(Season::Summer),
+            3 => Ok(Season::Autumn),
+            4 => Ok(Season::Winter),
             i => Err(SeasonConversionError(i)),
         }
     }
