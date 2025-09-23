@@ -1478,13 +1478,13 @@ impl From<OtherTerm> for Term {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Season {
     /// Spring.
-    Spring,
+    Spring = 1,
     /// Summer.
-    Summer,
+    Summer = 2,
     /// Autumn.
-    Autumn,
+    Autumn = 3,
     /// Winter.
-    Winter,
+    Winter = 4,
 }
 
 /// Error from converting a [u8] to a [Season].
