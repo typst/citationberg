@@ -10,6 +10,8 @@ use std::{collections::BTreeMap, str::FromStr};
 use serde::{Deserialize, Serialize};
 use unscanny::Scanner;
 
+use crate::taxonomy::OtherTerm;
+
 /// A CSL-JSON item.
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
 #[serde(transparent)]
@@ -338,6 +340,17 @@ impl TryFrom<u8> for Season {
             2 => Ok(Season::Autumn),
             3 => Ok(Season::Winter),
             i => Err(SeasonConversionError(i)),
+        }
+    }
+}
+
+impl From<Season> for OtherTerm {
+    fn from(value: Season) -> Self {
+        match value {
+            Season::Spring => OtherTerm::Season01,
+            Season::Summer => OtherTerm::Season02,
+            Season::Autumn => OtherTerm::Season03,
+            Season::Winter => OtherTerm::Season04,
         }
     }
 }
