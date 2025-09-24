@@ -1147,14 +1147,9 @@ impl OtherTerm {
     }
 
     /// Get the season for a number between 0 and 3.
-    pub const fn season(i: u8) -> Option<Self> {
-        match i {
-            0 => Some(Self::Season01),
-            1 => Some(Self::Season02),
-            2 => Some(Self::Season03),
-            3 => Some(Self::Season04),
-            _ => None,
-        }
+    pub fn season(i: u8) -> Option<Self> {
+        let season: Result<Season, _> = i.try_into();
+        season.map(Into::into).ok()
     }
 }
 
