@@ -1509,6 +1509,12 @@ impl Season {
     }
 }
 
+impl From<Season> for OtherTerm {
+    fn from(value: Season) -> Self {
+        OtherTerm::season(value)
+    }
+}
+
 /// Error from converting a [u8] to a [Season].
 #[derive(Debug, Clone, Copy)]
 pub struct SeasonConversionError(u8);
