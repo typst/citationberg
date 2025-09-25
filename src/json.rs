@@ -121,7 +121,20 @@ pub enum DateValue {
         date_parts: VecDateRange,
         literal: Option<String>,
         season: Option<String>,
+        circa: bool,
     },
+}
+
+impl DateValue {
+    /// True iff at least one date is approximate.
+    pub fn is_approx(&self) -> bool {
+        match self {
+            DateValue::Raw { raw, .. } => {
+                raw.start.circa || raw.end.map(|d| d.circa).unwrap_or_default()
+            }
+            DateValue::DateParts { circa, .. } => *circa,
+        }
+    }
 }
 
 impl TryFrom<DateValue> for FixedDateRange {
@@ -169,6 +182,7 @@ impl<'de> Deserialize<'de> for DateValue {
                 date_parts: VecDateRange,
                 literal: Option<String>,
                 season: Option<NumberOrString>,
+                circa: Option<bool>,
             },
         }
 
@@ -179,11 +193,12 @@ impl<'de> Deserialize<'de> for DateValue {
                 literal,
                 season: season.map(NumberOrString::into_string),
             },
-            DateReprRaw::DateParts { date_parts, literal, season } => {
+            DateReprRaw::DateParts { date_parts, literal, season, circa } => {
                 DateValue::DateParts {
                     date_parts,
                     literal,
                     season: season.map(NumberOrString::into_string),
+                    circa: circa.unwrap_or_default(),
                 }
             }
         })
@@ -311,6 +326,7 @@ pub struct FixedDate {
     pub month: Option<u8>,
     pub day: Option<u8>,
     pub season: Option<Season>,
+    pub circa: bool,
 }
 
 impl From<VecDate> for FixedDate {
@@ -319,7 +335,7 @@ impl From<VecDate> for FixedDate {
         let year = v.next().unwrap();
         let month = v.next().map(|v| (v - 1) as u8);
         let day = v.next().map(|v| (v - 1) as u8);
-        FixedDate { year, month, day, season: None }
+        FixedDate { year, month, day, season: None, circa: false }
     }
 }
 
@@ -346,7 +362,13 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
     let year = s.eat_while(char::is_ascii_digit);
     let year = year.parse().ok()?;
     if s.peek() != Some('-') {
-        return Some(FixedDate { year, month: None, day: None, season: None });
+        return Some(FixedDate {
+            year,
+            month: None,
+            day: None,
+            season: None,
+            circa: matches!(s.peek(), Some('~')),
+        });
     }
     s.eat();
 
@@ -357,7 +379,13 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
     }
 
     if s.peek() != Some('-') {
-        return Some(FixedDate { year, month: Some(month), day: None, season: None });
+        return Some(FixedDate {
+            year,
+            month: Some(month),
+            day: None,
+            season: None,
+            circa: matches!(s.peek(), Some('~')),
+        });
     }
     s.eat();
 
@@ -372,6 +400,7 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
         month: Some(month),
         day: Some(day),
         season: None,
+        circa: matches!(s.peek(), Some('~')),
     })
 }
 
@@ -497,5 +526,11 @@ mod tests {
 
         let item = Item(map);
         println!("{}", serde_json::to_string_pretty(&item).unwrap());
+    }
+
+    #[test]
+    fn test_approximate() {
+        let d: DateValue = serde_json::from_str(r#"{"raw": "2025-09~"}"#).unwrap();
+        assert!(d.is_approx());
     }
 }
