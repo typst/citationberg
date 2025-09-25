@@ -137,7 +137,7 @@ impl TryFrom<DateValue> for FixedDateRange {
         };
         fixed.start.season = season
             .and_then(|s| s.parse::<u8>().ok())
-            .and_then(|u| u.try_into().ok());
+            .and_then(|u| Season::try_from_csl_number(u).ok());
         Ok(fixed)
     }
 }
