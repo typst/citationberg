@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::{collections::BTreeMap, str::FromStr};
 
+use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 use unscanny::Scanner;
 
@@ -121,7 +122,20 @@ pub enum DateValue {
         date_parts: VecDateRange,
         literal: Option<String>,
         season: Option<String>,
+        circa: bool,
     },
+}
+
+impl DateValue {
+    /// True iff at least one date is approximate.
+    pub fn is_approx(&self) -> bool {
+        match self {
+            DateValue::Raw { raw, .. } => {
+                raw.start.circa || raw.end.map(|d| d.circa).unwrap_or_default()
+            }
+            DateValue::DateParts { circa, .. } => *circa,
+        }
+    }
 }
 
 impl TryFrom<DateValue> for FixedDateRange {
@@ -130,8 +144,9 @@ impl TryFrom<DateValue> for FixedDateRange {
     fn try_from(value: DateValue) -> Result<Self, Self::Error> {
         let (mut fixed, season) = match value {
             DateValue::Raw { raw, season, .. } => (raw, season),
-            DateValue::DateParts { date_parts, season, .. } => {
-                let res = date_parts.try_into()?;
+            DateValue::DateParts { date_parts, season, circa, .. } => {
+                let mut res: FixedDateRange = date_parts.try_into()?;
+                res.start.circa = circa;
                 (res, season)
             }
         };
@@ -148,6 +163,63 @@ impl From<DateValue> for VecDateRange {
             DateValue::Raw { raw, .. } => raw.into(),
             DateValue::DateParts { date_parts, .. } => date_parts,
         }
+    }
+}
+
+enum BooleanLike {
+    String(String),
+    Bool(bool),
+    Number(u8),
+}
+
+impl BooleanLike {
+    fn is_true(&self) -> bool {
+        match self {
+            BooleanLike::String(s) => s == "true",
+            BooleanLike::Bool(b) => *b,
+            BooleanLike::Number(n) => *n == 1,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BooleanLike {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ValueVisitor;
+
+        impl<'de> Visitor<'de> for ValueVisitor {
+            type Value = BooleanLike;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("boolean, string, or unsigned, small number")
+            }
+
+            #[inline]
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(BooleanLike::Bool(v))
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(BooleanLike::String(String::from(v)))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(BooleanLike::Number(v as u8))
+            }
+        }
+
+        deserializer.deserialize_any(ValueVisitor)
     }
 }
 
@@ -169,6 +241,7 @@ impl<'de> Deserialize<'de> for DateValue {
                 date_parts: VecDateRange,
                 literal: Option<String>,
                 season: Option<NumberOrString>,
+                circa: Option<BooleanLike>,
             },
         }
 
@@ -179,11 +252,12 @@ impl<'de> Deserialize<'de> for DateValue {
                 literal,
                 season: season.map(NumberOrString::into_string),
             },
-            DateReprRaw::DateParts { date_parts, literal, season } => {
+            DateReprRaw::DateParts { date_parts, literal, season, circa } => {
                 DateValue::DateParts {
                     date_parts,
                     literal,
                     season: season.map(NumberOrString::into_string),
+                    circa: circa.as_ref().map(BooleanLike::is_true).unwrap_or_default(),
                 }
             }
         })
@@ -311,6 +385,7 @@ pub struct FixedDate {
     pub month: Option<u8>,
     pub day: Option<u8>,
     pub season: Option<Season>,
+    pub circa: bool,
 }
 
 impl From<VecDate> for FixedDate {
@@ -319,7 +394,7 @@ impl From<VecDate> for FixedDate {
         let year = v.next().unwrap();
         let month = v.next().map(|v| (v - 1) as u8);
         let day = v.next().map(|v| (v - 1) as u8);
-        FixedDate { year, month, day, season: None }
+        FixedDate { year, month, day, season: None, circa: false }
     }
 }
 
@@ -346,7 +421,13 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
     let year = s.eat_while(char::is_ascii_digit);
     let year = year.parse().ok()?;
     if s.peek() != Some('-') {
-        return Some(FixedDate { year, month: None, day: None, season: None });
+        return Some(FixedDate {
+            year,
+            month: None,
+            day: None,
+            season: None,
+            circa: matches!(s.peek(), Some('~')),
+        });
     }
     s.eat();
 
@@ -357,7 +438,13 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
     }
 
     if s.peek() != Some('-') {
-        return Some(FixedDate { year, month: Some(month), day: None, season: None });
+        return Some(FixedDate {
+            year,
+            month: Some(month),
+            day: None,
+            season: None,
+            circa: matches!(s.peek(), Some('~')),
+        });
     }
     s.eat();
 
@@ -372,6 +459,7 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
         month: Some(month),
         day: Some(day),
         season: None,
+        circa: matches!(s.peek(), Some('~')),
     })
 }
 
@@ -497,5 +585,53 @@ mod tests {
 
         let item = Item(map);
         println!("{}", serde_json::to_string_pretty(&item).unwrap());
+    }
+
+    #[test]
+    fn test_approximate() {
+        let d: DateValue = serde_json::from_str(r#"{"raw": "2025-09~"}"#).unwrap();
+        assert!(d.is_approx());
+
+        let d: DateValue = serde_json::from_str(
+            r#"{
+            "circa": "true",
+            "date-parts": [
+                [
+                    2005,
+                    12,
+                    15
+                ]
+            ]}"#,
+        )
+        .unwrap();
+        assert!(d.is_approx());
+
+        let d: DateValue = serde_json::from_str(
+            r#"{
+            "circa": true,
+            "date-parts": [
+                [
+                    2005,
+                    12,
+                    15
+                ]
+            ]}"#,
+        )
+        .unwrap();
+        assert!(d.is_approx());
+
+        let d: DateValue = serde_json::from_str(
+            r#"{
+            "circa": 1,
+            "date-parts": [
+                [
+                    2005,
+                    12,
+                    15
+                ]
+            ]}"#,
+        )
+        .unwrap();
+        assert!(d.is_approx());
     }
 }
