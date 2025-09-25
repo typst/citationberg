@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::{collections::BTreeMap, str::FromStr};
 
+use serde::de::Visitor;
 use serde::{Deserialize, Serialize};
 use unscanny::Scanner;
 
@@ -164,6 +165,63 @@ impl From<DateValue> for VecDateRange {
     }
 }
 
+enum BooleanLike {
+    String(String),
+    Bool(bool),
+    Number(u8),
+}
+
+impl BooleanLike {
+    fn is_true(&self) -> bool {
+        match self {
+            BooleanLike::String(s) => s == "true",
+            BooleanLike::Bool(b) => *b,
+            BooleanLike::Number(n) => *n == 1,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for BooleanLike {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct ValueVisitor;
+
+        impl<'de> Visitor<'de> for ValueVisitor {
+            type Value = BooleanLike;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("boolean, string, or unsigned, small number")
+            }
+
+            #[inline]
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(BooleanLike::Bool(v))
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(BooleanLike::String(String::from(v)))
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(BooleanLike::Number(v as u8))
+            }
+        }
+
+        deserializer.deserialize_any(ValueVisitor)
+    }
+}
+
 impl<'de> Deserialize<'de> for DateValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -182,7 +240,7 @@ impl<'de> Deserialize<'de> for DateValue {
                 date_parts: VecDateRange,
                 literal: Option<String>,
                 season: Option<NumberOrString>,
-                circa: Option<bool>,
+                circa: Option<BooleanLike>,
             },
         }
 
@@ -198,7 +256,7 @@ impl<'de> Deserialize<'de> for DateValue {
                     date_parts,
                     literal,
                     season: season.map(NumberOrString::into_string),
-                    circa: circa.unwrap_or_default(),
+                    circa: circa.as_ref().map(BooleanLike::is_true).unwrap_or_default(),
                 }
             }
         })
@@ -531,6 +589,48 @@ mod tests {
     #[test]
     fn test_approximate() {
         let d: DateValue = serde_json::from_str(r#"{"raw": "2025-09~"}"#).unwrap();
+        assert!(d.is_approx());
+
+        let d: DateValue = serde_json::from_str(
+            r#"{
+            "circa": "true",
+            "date-parts": [
+                [
+                    2005,
+                    12,
+                    15
+                ]
+            ]}"#,
+        )
+        .unwrap();
+        assert!(d.is_approx());
+
+        let d: DateValue = serde_json::from_str(
+            r#"{
+            "circa": true,
+            "date-parts": [
+                [
+                    2005,
+                    12,
+                    15
+                ]
+            ]}"#,
+        )
+        .unwrap();
+        assert!(d.is_approx());
+
+        let d: DateValue = serde_json::from_str(
+            r#"{
+            "circa": 1,
+            "date-parts": [
+                [
+                    2005,
+                    12,
+                    15
+                ]
+            ]}"#,
+        )
+        .unwrap();
         assert!(d.is_approx());
     }
 }
