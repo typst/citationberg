@@ -1146,10 +1146,14 @@ impl OtherTerm {
         }
     }
 
-    /// Get the season for a number between 0 and 3.
-    pub fn season(i: u8) -> Option<Self> {
-        let season: Result<Season, _> = i.try_into();
-        season.map(Into::into).ok()
+    /// Get the term to describe a particular season.
+    pub const fn season(value: Season) -> Self {
+        match value {
+            Season::Spring => OtherTerm::Season01,
+            Season::Summer => OtherTerm::Season02,
+            Season::Autumn => OtherTerm::Season03,
+            Season::Winter => OtherTerm::Season04,
+        }
     }
 }
 
@@ -1194,12 +1198,9 @@ impl FromStr for OtherTerm {
         }
 
         if let Some(season) = value.strip_prefix(season_prefix) {
-            return match parse_int(season)? {
-                1 => Ok(Self::Season01),
-                2 => Ok(Self::Season02),
-                3 => Ok(Self::Season03),
-                4 => Ok(Self::Season04),
-                _ => Err(TermConversionError::OutOfRange),
+            return match Season::try_from_csl_number(parse_int(season)?) {
+                Ok(season) => Ok(Self::season(season)),
+                Err(_) => Err(TermConversionError::OutOfRange),
             };
         }
 
@@ -1472,14 +1473,40 @@ impl From<OtherTerm> for Term {
 /// Seasons of the year.
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum Season {
-    /// Spring.
-    Spring = 1,
-    /// Summer.
-    Summer = 2,
-    /// Autumn.
-    Autumn = 3,
-    /// Winter.
-    Winter = 4,
+    /// Spring (CSL season 01).
+    Spring,
+    /// Summer (CSL season 02).
+    Summer,
+    /// Autumn (CSL season 03).
+    Autumn,
+    /// Winter (CSL season 04).
+    Winter,
+}
+
+impl Season {
+    /// Converts a season number in the range 1-4 (as defined by the CSL spec)
+    /// to a Season instance.
+    ///
+    /// Fails if the number is out of range.
+    pub const fn try_from_csl_number(i: u8) -> Result<Season, SeasonConversionError> {
+        match i {
+            1 => Ok(Season::Spring),
+            2 => Ok(Season::Summer),
+            3 => Ok(Season::Autumn),
+            4 => Ok(Season::Winter),
+            i => Err(SeasonConversionError(i)),
+        }
+    }
+
+    /// Converts a season to its number as defined by the CSL spec.
+    pub const fn to_csl_number(self) -> u8 {
+        match self {
+            Season::Spring => 1,
+            Season::Summer => 2,
+            Season::Autumn => 3,
+            Season::Winter => 4,
+        }
+    }
 }
 
 /// Error from converting a [u8] to a [Season].
@@ -1489,30 +1516,5 @@ pub struct SeasonConversionError(u8);
 impl fmt::Display for SeasonConversionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Cannot convert {} to a season", self.0)
-    }
-}
-
-impl TryFrom<u8> for Season {
-    type Error = SeasonConversionError;
-
-    fn try_from(val: u8) -> Result<Season, SeasonConversionError> {
-        match val {
-            1 => Ok(Season::Spring),
-            2 => Ok(Season::Summer),
-            3 => Ok(Season::Autumn),
-            4 => Ok(Season::Winter),
-            i => Err(SeasonConversionError(i)),
-        }
-    }
-}
-
-impl From<Season> for OtherTerm {
-    fn from(value: Season) -> Self {
-        match value {
-            Season::Spring => OtherTerm::Season01,
-            Season::Summer => OtherTerm::Season02,
-            Season::Autumn => OtherTerm::Season03,
-            Season::Winter => OtherTerm::Season04,
-        }
     }
 }
