@@ -144,8 +144,9 @@ impl TryFrom<DateValue> for FixedDateRange {
     fn try_from(value: DateValue) -> Result<Self, Self::Error> {
         let (mut fixed, season) = match value {
             DateValue::Raw { raw, season, .. } => (raw, season),
-            DateValue::DateParts { date_parts, season, .. } => {
-                let res = date_parts.try_into()?;
+            DateValue::DateParts { date_parts, season, circa, .. } => {
+                let mut res: FixedDateRange = date_parts.try_into()?;
+                res.start.circa = circa;
                 (res, season)
             }
         };
