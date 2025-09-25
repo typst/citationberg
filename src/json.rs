@@ -8,6 +8,8 @@ use std::{collections::BTreeMap, str::FromStr};
 use serde::{Deserialize, Serialize};
 use unscanny::Scanner;
 
+use crate::taxonomy::Season;
+
 /// A CSL-JSON item.
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
 #[serde(transparent)]
@@ -126,10 +128,17 @@ impl TryFrom<DateValue> for FixedDateRange {
     type Error = ();
 
     fn try_from(value: DateValue) -> Result<Self, Self::Error> {
-        match value {
-            DateValue::Raw { raw, .. } => Ok(raw),
-            DateValue::DateParts { date_parts, .. } => date_parts.try_into(),
-        }
+        let (mut fixed, season) = match value {
+            DateValue::Raw { raw, season, .. } => (raw, season),
+            DateValue::DateParts { date_parts, season, .. } => {
+                let res = date_parts.try_into()?;
+                (res, season)
+            }
+        };
+        fixed.start.season = season
+            .and_then(|s| s.parse::<u8>().ok())
+            .and_then(|u| u.try_into().ok());
+        Ok(fixed)
     }
 }
 
@@ -301,6 +310,7 @@ pub struct FixedDate {
     pub year: i16,
     pub month: Option<u8>,
     pub day: Option<u8>,
+    pub season: Option<Season>,
 }
 
 impl From<VecDate> for FixedDate {
@@ -309,7 +319,7 @@ impl From<VecDate> for FixedDate {
         let year = v.next().unwrap();
         let month = v.next().map(|v| (v - 1) as u8);
         let day = v.next().map(|v| (v - 1) as u8);
-        FixedDate { year, month, day }
+        FixedDate { year, month, day, season: None }
     }
 }
 
@@ -336,7 +346,7 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
     let year = s.eat_while(char::is_ascii_digit);
     let year = year.parse().ok()?;
     if s.peek() != Some('-') {
-        return Some(FixedDate { year, month: None, day: None });
+        return Some(FixedDate { year, month: None, day: None, season: None });
     }
     s.eat();
 
@@ -347,7 +357,7 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
     }
 
     if s.peek() != Some('-') {
-        return Some(FixedDate { year, month: Some(month), day: None });
+        return Some(FixedDate { year, month: Some(month), day: None, season: None });
     }
     s.eat();
 
@@ -357,7 +367,12 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
         return None;
     }
 
-    Some(FixedDate { year, month: Some(month), day: Some(day) })
+    Some(FixedDate {
+        year,
+        month: Some(month),
+        day: Some(day),
+        season: None,
+    })
 }
 
 /// A CSL-JSON citation.
