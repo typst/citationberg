@@ -11,7 +11,7 @@ use unscanny::Scanner;
 use crate::taxonomy::Season;
 
 /// A CSL-JSON item.
-#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone)]
 #[serde(transparent)]
 pub struct Item(pub BTreeMap<String, Value>);
 
@@ -38,7 +38,7 @@ impl Item {
 }
 
 /// A field in an CSL-JSON item.
-#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone)]
 #[serde(untagged)]
 pub enum Value {
     /// A string value.
@@ -74,7 +74,7 @@ impl Value {
 }
 
 /// The representation of a name.
-#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone)]
 #[serde(untagged)]
 pub enum NameValue {
     /// A name that doesn't necessarily follow the schema of a `NameItem`.
@@ -84,7 +84,7 @@ pub enum NameValue {
 }
 
 /// A name that is defined by a collection of parts.
-#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone)]
 #[serde(rename_all = "kebab-case")]
 pub struct NameItem {
     /// The family name.
@@ -102,7 +102,7 @@ pub struct NameItem {
 
 /// A name that doesn't necessarily follow the schema of a `NameItem`. May be
 /// useful for institutional names.
-#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone)]
 pub struct LiteralName {
     /// The literal name.
     pub literal: String,
