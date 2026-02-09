@@ -10,30 +10,45 @@ use unscanny::Scanner;
 
 use crate::taxonomy::Season;
 
+/// Potential values of [`Item::custom`].
+pub type CustomValue = serde_json::Value;
+
+/// A free-form object storing custom key-value pairs.
+pub type Custom = serde_json::Map<String, CustomValue>;
+
 /// A CSL-JSON item.
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq, Clone)]
-#[serde(transparent)]
-pub struct Item(pub BTreeMap<String, Value>);
+pub struct Item {
+    /// Custom key-value pairs.
+    ///
+    /// Used to store additional information that does not have a designated CSL JSON field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom: Option<Custom>,
+
+    /// All fields of the item except for [`custom`][Self::custom].
+    #[serde(flatten)]
+    pub fields: BTreeMap<String, Value>,
+}
 
 impl Item {
     /// The item's ID.
     pub fn id(&self) -> Option<Cow<'_, str>> {
-        self.0.get("id")?.to_str()
+        self.fields.get("id")?.to_str()
     }
 
     /// The item type.
     pub fn type_(&self) -> Option<Cow<'_, str>> {
-        self.0.get("type")?.to_str()
+        self.fields.get("type")?.to_str()
     }
 
     /// Whether any of the fields values contains any HTML.
     pub fn has_html(&self) -> bool {
-        self.0.values().any(|v| v.has_html())
+        self.fields.values().any(|v| v.has_html())
     }
 
     /// Whether this entry may contain "cheater syntax" for odd fields.
     pub fn may_have_hack(&self) -> bool {
-        self.0.contains_key("note")
+        self.fields.contains_key("note")
     }
 }
 
@@ -474,9 +489,9 @@ mod tests {
 
     #[test]
     fn test_serialize() {
-        let mut map = BTreeMap::new();
-        map.insert("title".to_string(), Value::String("The Title".to_string()));
-        map.insert(
+        let mut fields = BTreeMap::new();
+        fields.insert("title".to_string(), Value::String("The Title".to_string()));
+        fields.insert(
             "author".to_string(),
             Value::Names(vec![NameValue::Item(NameItem {
                 family: "Doe".to_string(),
@@ -486,7 +501,7 @@ mod tests {
                 suffix: None,
             })]),
         );
-        map.insert(
+        fields.insert(
             "date".to_string(),
             Value::Date(DateValue::Raw {
                 raw: FixedDateRange::from_str("2021-09-10/2022-01-01").unwrap(),
@@ -495,7 +510,30 @@ mod tests {
             }),
         );
 
-        let item = Item(map);
+        let item = Item { custom: None, fields };
         println!("{}", serde_json::to_string_pretty(&item).unwrap());
+    }
+
+    #[test]
+    fn test_roundtrip_custom() {
+        let mut fields = BTreeMap::new();
+        fields.insert("foo".into(), Value::String("bar".into()));
+
+        let custom = serde_json::json! {{
+            "bool": true,
+            "float": 35.6,
+            "null": null,
+        }}
+        .as_object()
+        .cloned()
+        .unwrap()
+        .into();
+
+        let item = Item { custom, fields };
+
+        let serialized = serde_json::to_string(&item).unwrap();
+        let deserialized: Item = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized, item);
     }
 }
