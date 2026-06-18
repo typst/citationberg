@@ -34,6 +34,7 @@ You can also parse a [`DependentStyle`] or a [`IndependentStyle`] directly.
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "json")]
 pub mod json;
