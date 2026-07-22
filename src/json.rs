@@ -543,7 +543,7 @@ pub struct CitationProperties {
     /// The footnote number in which the citation is located in the document.
     ///
     /// Zero for citations within the main text of the document.
-    note_index: Option<u32>,
+    pub note_index: Option<u32>,
 }
 
 #[derive(Deserialize)]
