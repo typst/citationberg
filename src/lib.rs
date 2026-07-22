@@ -3590,7 +3590,7 @@ mod test {
             let result = check(&source);
             if let Some(err) = result {
                 failures += 1;
-                println!("❌ {:?} failed: \n\n{:#?}", &path, &err);
+                println!("❌ {:?} failed: \n\n{:#?}", path, err);
             }
         }
 
