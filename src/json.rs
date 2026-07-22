@@ -470,10 +470,12 @@ fn parse_date(s: &mut Scanner<'_>) -> Option<FixedDate> {
 #[serde(rename_all = "camelCase")]
 pub struct Citation {
     /// A unique ID for the citation.
+    #[serde(rename = "citationID")]
     pub citation_id: String,
     /// The individual parts of the citation.
     pub citation_items: Vec<CitationItem>,
     /// The citation's properties.
+    #[serde(default)]
     pub properties: CitationProperties,
 }
 
@@ -535,10 +537,12 @@ impl<'de> Deserialize<'de> for CitationItem {
 }
 
 /// Properties of a citation.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CitationProperties {
     /// The footnote number in which the citation is located in the document.
+    ///
+    /// Zero for citations within the main text of the document.
     note_index: Option<u32>,
 }
 
