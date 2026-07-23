@@ -34,6 +34,7 @@ You can also parse a [`DependentStyle`] or a [`IndependentStyle`] directly.
 
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "json")]
 pub mod json;
@@ -3590,7 +3591,7 @@ mod test {
             let result = check(&source);
             if let Some(err) = result {
                 failures += 1;
-                println!("❌ {:?} failed: \n\n{:#?}", &path, &err);
+                println!("❌ {:?} failed: \n\n{:#?}", path, err);
             }
         }
 
