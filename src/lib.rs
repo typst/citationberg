@@ -93,6 +93,8 @@ impl fmt::Display for XmlSeError {
         if let Some(path) = &self.path {
             write!(f, " at `{path}`")?;
         }
+        // Displaying the source error is necessary for `serde::de::Error::custom`.
+        write!(f, ": {}", self.source)?;
         Ok(())
     }
 }
@@ -109,6 +111,8 @@ impl fmt::Display for XmlDeError {
         if let Some(path) = &self.path {
             write!(f, " at `{path}`")?;
         }
+        // Displaying the source error is necessary for `serde::de::Error::custom`.
+        write!(f, ": {}", self.source)?;
         Ok(())
     }
 }
