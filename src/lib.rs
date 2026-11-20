@@ -190,6 +190,9 @@ struct RawStyle {
     /// independent styles.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub citation: Option<Citation>,
+    /// How the author is displayed in narrative citations (CSL 1.1).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intext: Option<Citation>,
     /// How bibliographies are displayed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bibliography: Option<Bibliography>,
@@ -221,6 +224,7 @@ impl From<IndependentStyle> for RawStyle {
             default_locale: value.default_locale,
             version: value.version,
             citation: Some(value.citation),
+            intext: value.intext,
             bibliography: value.bibliography,
             independent_settings: Some(value.settings),
             macros: value.macros,
@@ -236,6 +240,7 @@ impl From<DependentStyle> for RawStyle {
             default_locale: value.default_locale,
             version: value.version,
             citation: None,
+            intext: None,
             bibliography: None,
             independent_settings: None,
             macros: Vec::new(),
@@ -264,6 +269,10 @@ pub struct IndependentStyle {
     pub version: String,
     /// How notes or in-text citations are displayed.
     pub citation: Citation,
+    /// How the author is displayed in narrative citations like "Doe (2018)"
+    /// (`cs:intext`, introduced in CSL 1.1). When absent, narrative citations
+    /// are derived from `citation`.
+    pub intext: Option<Citation>,
     /// How bibliographies are displayed.
     pub bibliography: Option<Bibliography>,
     /// The style's settings. Must be present in dependent styles.
@@ -443,6 +452,7 @@ impl TryFrom<RawStyle> for Style {
                     default_locale: value.default_locale,
                     version: value.version,
                     citation,
+                    intext: value.intext,
                     bibliography: value.bibliography,
                     settings,
                     macros: value.macros,
@@ -3891,6 +3901,51 @@ mod test {
 
         assert_eq!("n11564–8", run(min, "n11564 ", " n1568"));
         assert_eq!("n11564–1568", run(min, "n11564 ", " 1568"));
+    }
+
+    const INTEXT_STYLE: &str = r#"<style
+      xmlns="http://purl.org/net/xbiblio/csl"
+      class="in-text"
+      version="1.1">
+  <info>
+    <id />
+    <title />
+    <updated>2009-08-10T04:49:00+09:00</updated>
+  </info>
+  <citation>
+    <layout prefix="(" suffix=")">
+      <names variable="author"><name form="short" and="symbol"/></names>
+    </layout>
+  </citation>
+  <intext>
+    <layout>
+      <names variable="author"><name form="short" and="text"/></names>
+    </layout>
+  </intext>
+</style>"#;
+
+    #[test]
+    fn intext() {
+        let style = IndependentStyle::from_xml(INTEXT_STYLE).unwrap();
+        let intext = style.intext.as_ref().expect("cs:intext should be parsed");
+        assert_eq!(intext.layout.elements.len(), 1);
+        assert_eq!(intext.layout.prefix, None);
+        assert_eq!(style.citation.layout.prefix.as_deref(), Some("("));
+
+        // Serialization roundtrip.
+        let xml = Style::Independent(style.clone()).to_xml().unwrap();
+        assert!(xml.contains("<intext"), "{xml}");
+        let Style::Independent(again) = Style::from_xml(&xml).unwrap() else {
+            panic!("expected an independent style");
+        };
+        assert_eq!(again, style);
+    }
+
+    #[test]
+    fn intext_is_optional() {
+        let xml = INTEXT_STYLE.replace("<intext>", "<!--").replace("</intext>", "-->");
+        let style = IndependentStyle::from_xml(&xml).unwrap();
+        assert!(style.intext.is_none());
     }
 
     #[test]
