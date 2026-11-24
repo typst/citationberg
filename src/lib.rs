@@ -3930,4 +3930,30 @@ mod test {
         let style = result.unwrap();
         assert!(style.locale[1].lang.as_ref().unwrap().is_english());
     }
+
+    #[test]
+    fn roundtrip_xml_sub_verbo_in_locator_list() {
+        let style_str = r#"<style
+      xmlns="http://purl.org/net/xbiblio/csl"
+      class="note"
+      version="1.0">
+  <info>
+    <id />
+    <title />
+    <updated>2009-08-10T04:49:00+09:00</updated>
+  </info>
+  <citation>
+    <layout>
+      <choose>
+        <if locator="sub-verbo page">
+          <text variable="locator"/>
+        </if>
+      </choose>
+    </layout>
+  </citation>
+</style>"#;
+        let style = Style::from_xml(style_str).unwrap();
+        let xml = style.to_xml().unwrap();
+        assert_eq!(Style::from_xml(&xml).unwrap(), style);
+    }
 }

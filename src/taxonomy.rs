@@ -925,7 +925,7 @@ pub enum Locator {
     Rule,
     Scene,
     Section,
-    #[serde(rename = "sub verbo", alias = "sub-verbo")]
+    #[serde(rename = "sub-verbo", alias = "sub verbo")]
     SubVerbo,
     Supplement,
     Table,
